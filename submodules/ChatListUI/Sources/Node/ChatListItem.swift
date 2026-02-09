@@ -4448,6 +4448,10 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         }
                     }
                     
+                    // MARK: Swiftgram
+                    let sgCompactMessagePreviewVerticalOffset: CGFloat = SGCompactMessagePreviewLayout.textVerticalOffset(sizeFactor: sizeFactor, compactMessagePreview: sgCompactMessagePreview, compactChatList: sgCompactChatList, hasAuthorLine: !authorLayout.height.isZero)
+                    let sgCompactMessagePreviewTitleTextSpacing: CGFloat = SGCompactMessagePreviewLayout.titleTextSpacing(sizeFactor: sizeFactor, compactMessagePreview: sgCompactMessagePreview, compactChatList: sgCompactChatList, hasAuthorLine: !authorLayout.height.isZero)
+                    //
                     var titleOffset: CGFloat = titleLeftOffset
                     if let currentSecretIconImage = currentSecretIconImage {
                         let iconNode: ASImageNode
@@ -4462,7 +4466,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                             strongSelf.secretIconNode = iconNode
                         }
                         iconNode.image = currentSecretIconImage
-                        transition.updateFrame(node: iconNode, frame: CGRect(origin: CGPoint(x: contentRect.origin.x + titleLeftOffset, y: contentRect.origin.y + floor((titleLayout.size.height - currentSecretIconImage.size.height) / 2.0)), size: currentSecretIconImage.size))
+                        transition.updateFrame(node: iconNode, frame: CGRect(origin: CGPoint(x: contentRect.origin.x + titleLeftOffset, y: contentRect.origin.y + floor((titleLayout.size.height - currentSecretIconImage.size.height) / 2.0) + sgCompactMessagePreviewVerticalOffset), size: currentSecretIconImage.size))
                         titleOffset += currentSecretIconImage.size.width + 3.0
                     } else if let secretIconNode = strongSelf.secretIconNode {
                         strongSelf.secretIconNode = nil
@@ -4470,10 +4474,6 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     }
                     
                     let contentDelta = CGPoint(x: contentRect.origin.x - (strongSelf.titleNode.frame.minX - titleOffset), y: contentRect.origin.y - (strongSelf.titleNode.frame.minY - UIScreenPixel))
-                    // MARK: Swiftgram
-                    let sgCompactMessagePreviewVerticalOffset: CGFloat = SGCompactMessagePreviewLayout.textVerticalOffset(sizeFactor: sizeFactor, compactMessagePreview: sgCompactMessagePreview, compactChatList: sgCompactChatList, hasAuthorLine: !authorLayout.height.isZero)
-                    let sgCompactMessagePreviewTitleTextSpacing: CGFloat = SGCompactMessagePreviewLayout.titleTextSpacing(sizeFactor: sizeFactor, compactMessagePreview: sgCompactMessagePreview, compactChatList: sgCompactChatList, hasAuthorLine: !authorLayout.height.isZero)
-                    //
                     let titleFrame = CGRect(origin: CGPoint(x: contentRect.origin.x + titleOffset, y: contentRect.origin.y + UIScreenPixel + sgCompactMessagePreviewVerticalOffset), size: titleLayout.size)
                     strongSelf.titleNode.frame = titleFrame
                     
