@@ -68,8 +68,7 @@ jobs:
             --configurationPath="build-system/appstore-configuration.json" \
             --codesigningInformationPath=build-system/fake-codesigning \
             --configuration=release_arm64 \
-            --buildNumber="$BUILD_NUMBER" \
-            --disableExtensions
+            --buildNumber="$BUILD_NUMBER"
 
       - name: Collect and strip IPA
         run: |
