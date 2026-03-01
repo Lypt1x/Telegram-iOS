@@ -3,6 +3,14 @@ import Postbox
 import TelegramApi
 import SwiftSignalKit
 
+// MARK: - Ghost Mode helper
+private func isGhostModeHideReadReceipts() -> Bool {
+    let defaults = UserDefaults.standard
+    guard defaults.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if defaults.object(forKey: "sg_ghostModeHideReadReceipts") == nil { return true }
+    return defaults.bool(forKey: "sg_ghostModeHideReadReceipts")
+}
+
 
 func _internal_applyMaxReadIndexInteractively(postbox: Postbox, stateManager: AccountStateManager, index: MessageIndex) -> Signal<Void, NoError> {
     return postbox.transaction { transaction -> Void in
@@ -64,7 +72,10 @@ func _internal_applyMaxReadIndexInteractively(transaction: Transaction, stateMan
             }
         }
     } else if index.id.peerId.namespace == Namespaces.Peer.CloudUser || index.id.peerId.namespace == Namespaces.Peer.CloudGroup || index.id.peerId.namespace == Namespaces.Peer.CloudChannel {
-        stateManager.notifyAppliedIncomingReadMessages([index.id])
+        // GHOST MODE: Don't send read receipts
+        if !isGhostModeHideReadReceipts() {
+            stateManager.notifyAppliedIncomingReadMessages([index.id])
+        }
     }
 }
 
