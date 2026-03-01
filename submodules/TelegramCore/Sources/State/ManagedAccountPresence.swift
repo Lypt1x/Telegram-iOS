@@ -6,6 +6,13 @@ import MtProtoKit
 
 private typealias SignalKitTimer = SwiftSignalKit.Timer
 
+// MARK: - Ghost Mode helper (reads UserDefaults directly to avoid cross-module deps)
+private func isGhostModeHideOnlineStatus() -> Bool {
+    let defaults = UserDefaults.standard
+    guard defaults.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if defaults.object(forKey: "sg_ghostModeHideOnlineStatus") == nil { return true }
+    return defaults.bool(forKey: "sg_ghostModeHideOnlineStatus")
+}
 
 private final class AccountPresenceManagerImpl {
     private let queue: Queue
@@ -43,6 +50,13 @@ private final class AccountPresenceManagerImpl {
     }
     
     private func updatePresence(_ isOnline: Bool) {
+        // GHOST MODE: Skip online status update
+        if isGhostModeHideOnlineStatus() {
+            self.onlineTimer?.invalidate()
+            self.onlineTimer = nil
+            return
+        }
+        
         let request: Signal<Api.Bool, MTRpcError>
         if isOnline {
             let timer = SignalKitTimer(timeout: 30.0, repeat: false, completion: { [weak self] in
