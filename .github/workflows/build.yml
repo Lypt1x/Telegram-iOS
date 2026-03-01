@@ -1,17 +1,17 @@
 name: CI
 
 on:
-  # push:
-  #   branches: [ master ]
+  push:
+    branches: [ ghost-mode ]
 
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-13
+    runs-on: macos-26
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
           fetch-depth: '0'
