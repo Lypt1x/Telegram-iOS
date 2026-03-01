@@ -62,15 +62,11 @@ jobs:
           OUTPUT_PATH="build/artifacts"
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
-          for f in bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Swiftgram.ipa; do
-            cp "$f" $OUTPUT_PATH/
-          done
+          cp bazel-bin/Telegram/Swiftgram.ipa $OUTPUT_PATH/
 
           # collect dsym
           mkdir -p build/DSYMs
-          for f in bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/*.dSYM; do
-            cp -R "$f" build/DSYMs/
-          done
+          cp -R bazel-bin/Telegram/*.dSYM build/DSYMs/ 2>/dev/null; cp -R bazel-bin/Telegram/*.framework.dSYM build/DSYMs/ 2>/dev/null; cp -R bazel-bin/Telegram/*.appex.dSYM build/DSYMs/ 2>/dev/null; cp -R bazel-bin/Telegram/*.app.dSYM build/DSYMs/ 2>/dev/null || true
           zip -r "./$OUTPUT_PATH/Telegram.DSYMs.zip" build/DSYMs 1>/dev/null
 
       - name: Create Release
