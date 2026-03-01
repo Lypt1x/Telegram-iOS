@@ -27,6 +27,19 @@ jobs:
           cp -R $GITHUB_WORKSPACE /Users/Shared/
           mv /Users/Shared/$(basename $GITHUB_WORKSPACE) /Users/Shared/telegram-ios
 
+      - name: Inject API keys
+        run: |
+          cd /Users/Shared/telegram-ios
+          python3 -c "
+          import json
+          with open('build-system/appstore-configuration.json', 'r') as f:
+              config = json.load(f)
+          config['api_id'] = '${{ secrets.TELEGRAM_API_ID }}'
+          config['api_hash'] = '${{ secrets.TELEGRAM_API_HASH }}'
+          with open('build-system/appstore-configuration.json', 'w') as f:
+              json.dump(config, f, indent=2)
+          "
+
       - name: Build the App
         run: |
           set -x
