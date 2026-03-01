@@ -42,6 +42,7 @@ private enum SGControllerSection: Int32, SGItemListSection {
     case videoNotes
     case contextMenu
     case accountColors
+    case ghostMode
     case other
 }
 
@@ -106,6 +107,11 @@ private enum SGBoolSetting: String {
     case nyStyleSnow
     case nyStyleLightning
     case tabBarSearchEnabled
+    // Ghost Mode
+    case ghostModeEnabled
+    case ghostModeHideOnlineStatus
+    case ghostModeHideReadReceipts
+    case ghostModeHideTypingIndicator
 }
 
 private enum SGOneFromManySetting: String {
@@ -302,6 +308,15 @@ private func SGControllerEntries(presentationData: PresentationData, callListSet
         }
     }
     entries.append(.notice(id: id.count, section: .accountColors, text: i18n("Settings.CustomColors.Saturation.Notice", lang)))
+    
+
+    // MARK: Ghost Mode
+    entries.append(.header(id: id.count, section: .ghostMode, text: "GHOST MODE", badge: nil))
+    entries.append(.toggle(id: id.count, section: .ghostMode, settingName: .ghostModeEnabled, value: SGSimpleSettings.shared.ghostModeEnabled, text: "Ghost Mode", enabled: true))
+    entries.append(.notice(id: id.count, section: .ghostMode, text: "Hide your online status, read receipts, and typing indicators from other users."))
+    entries.append(.toggle(id: id.count, section: .ghostMode, settingName: .ghostModeHideOnlineStatus, value: SGSimpleSettings.shared.ghostModeHideOnlineStatus, text: "Hide Online Status", enabled: SGSimpleSettings.shared.ghostModeEnabled))
+    entries.append(.toggle(id: id.count, section: .ghostMode, settingName: .ghostModeHideReadReceipts, value: SGSimpleSettings.shared.ghostModeHideReadReceipts, text: "Hide Read Receipts", enabled: SGSimpleSettings.shared.ghostModeEnabled))
+    entries.append(.toggle(id: id.count, section: .ghostMode, settingName: .ghostModeHideTypingIndicator, value: SGSimpleSettings.shared.ghostModeHideTypingIndicator, text: "Hide Typing Indicator", enabled: SGSimpleSettings.shared.ghostModeEnabled))
     
     id.increment(10000)
     entries.append(.header(id: id.count, section: .other, text: strings.Appearance_Other.uppercased(), badge: nil))
@@ -521,6 +536,15 @@ public func sgSettingsController(context: AccountContext/*, focusOnItemTag: Int?
         case .nyStyleLightning:
             SGSimpleSettings.shared.nyStyle = value ? SGSimpleSettings.NYStyle.lightning.rawValue : SGSimpleSettings.NYStyle.default.rawValue
             simplePromise.set(true) // Trigger update for 'enabled' field of other toggles
+        case .ghostModeEnabled:
+            SGSimpleSettings.shared.ghostModeEnabled = value
+            simplePromise.set(true)
+        case .ghostModeHideOnlineStatus:
+            SGSimpleSettings.shared.ghostModeHideOnlineStatus = value
+        case .ghostModeHideReadReceipts:
+            SGSimpleSettings.shared.ghostModeHideReadReceipts = value
+        case .ghostModeHideTypingIndicator:
+            SGSimpleSettings.shared.ghostModeHideTypingIndicator = value
         }
     }, updateSliderValue: { setting, value in
         switch (setting) {
