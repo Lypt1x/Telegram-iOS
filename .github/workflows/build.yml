@@ -1,14 +1,11 @@
 name: CI
-
 on:
   push:
     branches: [ ghost-mode ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: macos-26
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,10 +24,18 @@ jobs:
           cp -R $GITHUB_WORKSPACE /Users/Shared/
           mv /Users/Shared/$(basename $GITHUB_WORKSPACE) /Users/Shared/telegram-ios
 
+      - name: Restore Bazel cache
+        uses: actions/cache@v4
+        with:
+          path: /private/var/tmp/_bazel_cache
+          key: bazel-${{ runner.os }}-${{ hashFiles('**/BUILD', '**/WORKSPACE', 'versions.json') }}
+          restore-keys: |
+            bazel-${{ runner.os }}-
+
       - name: Inject API keys
         run: |
           cd /Users/Shared/telegram-ios
-          python3 -c "
+          python3 << 'PYEOF'
           import json
           with open('build-system/appstore-configuration.json', 'r') as f:
               config = json.load(f)
@@ -38,19 +43,17 @@ jobs:
           config['api_hash'] = '${{ secrets.TELEGRAM_API_HASH }}'
           with open('build-system/appstore-configuration.json', 'w') as f:
               json.dump(config, f, indent=2)
-          "
+          print('API keys injected')
+          PYEOF
 
       - name: Build the App
         run: |
           set -x
-
           SOURCE_DIR=/Users/Shared/telegram-ios
           BAZEL_USER_ROOT="/private/var/tmp/_bazel_containerhost"
-
           cd $SOURCE_DIR
 
           BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
-
           export APP_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["app"]);')
           export COMMIT_COUNT=$(git rev-list --count HEAD)
           export COMMIT_COUNT="$(($COMMIT_COUNT+$BUILD_NUMBER_OFFSET))"
@@ -65,23 +68,36 @@ jobs:
             --configurationPath="build-system/appstore-configuration.json" \
             --codesigningInformationPath=build-system/fake-codesigning \
             --configuration=release_arm64 \
-            --buildNumber="$BUILD_NUMBER"
+            --buildNumber="$BUILD_NUMBER" \
+            --disableExtensions
 
-      - name: Collect artifacts
+      - name: Collect and strip IPA
         run: |
           set -x
           cd /Users/Shared/telegram-ios
-
-          # Collect IPA
           OUTPUT_PATH="build/artifacts"
           mkdir -p "$OUTPUT_PATH"
-          cp bazel-bin/Telegram/Swiftgram.ipa "$OUTPUT_PATH/Swiftgram.ipa"
-          ls -la "$OUTPUT_PATH/"
+          cp bazel-bin/Telegram/Swiftgram.ipa "$OUTPUT_PATH/Swiftgram-raw.ipa"
 
-          # Collect dSYMs
+          cd "$OUTPUT_PATH"
+          mkdir -p ipa_tmp && cd ipa_tmp
+          unzip -q ../Swiftgram-raw.ipa
+
+          # Strip Watch app and extensions that cause sideload issues
+          rm -rf Payload/Swiftgram.app/Watch && echo "Removed Watch"
+          rm -rf Payload/Swiftgram.app/PlugIns && echo "Removed PlugIns"
+
+          ls -la Payload/Swiftgram.app/
+
+          zip -r -q ../Swiftgram.ipa Payload/
+          cd ..
+          rm -rf ipa_tmp Swiftgram-raw.ipa
+          ls -la Swiftgram.ipa
+
+          # dSYMs
+          cd /Users/Shared/telegram-ios
           mkdir -p build/DSYMs
           cp -R bazel-bin/Telegram/*.dSYM build/DSYMs/ 2>/dev/null || true
-          ls build/DSYMs/ || echo "No dSYMs found"
           cd "$OUTPUT_PATH"
           zip -r Swiftgram.DSYMs.zip ../DSYMs 1>/dev/null || echo "dSYM zip skipped"
 
@@ -96,6 +112,7 @@ jobs:
           body: |
             Swiftgram for iOS ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }}) with Ghost Mode.
             Unsigned IPA - sideload with AltStore, Sideloadly, or TrollStore.
+            Extensions stripped for sideloading compatibility.
           draft: false
           prerelease: false
 
