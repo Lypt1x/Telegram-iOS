@@ -124,6 +124,9 @@ import ChatMediaInputStickerGridItem
 import AdsInfoScreen
 import FaceScanScreen
 import ForumCreateTopicScreen
+import SGSimpleSettings
+import SGDeletedMessagesStore
+import SGSettingsUI
 
 extension ChatControllerImpl {
     func openPeer(peer: EnginePeer?, navigation: ChatControllerInteractionNavigateToPeer, fromMessage: MessageReference?, fromReactionMessageId: MessageId? = nil, expandAvatar: Bool = false, peerTypes: ReplyMarkupButtonAction.PeerTypes? = nil, skipAgeVerification: Bool = false) {
@@ -367,6 +370,26 @@ extension ChatControllerImpl {
             
             self?.beginMessageSearch("")
         })))
+        
+        // MARK: Swiftgram - Deleted Messages indicator
+        if SGSimpleSettings.shared.deletedMessagesHistoryEnabled && SGSimpleSettings.shared.deletedMessagesShowIndicator {
+            let deletedCount = DeletedMessagesStore.shared.getDeletedMessages(forPeerId: peerId.toInt64()).count
+            if deletedCount > 0 {
+                items.append(.separator)
+                items.append(.action(ContextMenuActionItem(text: "Deleted Messages (\(deletedCount))", icon: { theme in
+                    return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Delete"), color: theme.contextMenu.primaryColor)
+                }, action: { [weak self] _, f in
+                    f(.default)
+                    
+                    guard let self else {
+                        return
+                    }
+                    
+                    let controller = SGDeletedMessagesController(context: self.context, peerId: peerId.toInt64())
+                    (self.navigationController as? NavigationController)?.pushViewController(controller)
+                })))
+            }
+        }
         
         if let threadId = self.chatLocation.threadId, let peer = self.presentationInterfaceState.renderedPeer?.chatMainPeer, (peer is TelegramChannel || peer is TelegramGroup) {
             items.append(.action(ContextMenuActionItem(text: strings.CreateTopic_EditTitle, icon: { theme in

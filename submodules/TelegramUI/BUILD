@@ -24,6 +24,7 @@ sgdeps = [
     "//Swiftgram/SGProUI:SGProUI",
     "//Swiftgram/SGKeychainBackupManager:SGKeychainBackupManager",
     "//Swiftgram/SGGHSettings:SGGHSettings",
+    "//Swiftgram/SGDeletedMessagesStore:SGDeletedMessagesStore",
     # "//Swiftgram/SGContentAnalysis:SGContentAnalysis"
 ]
 
