@@ -13,6 +13,10 @@ workflows:
       branch_patterns:
         - pattern: ghost-mode
           include: true
+        - pattern: feature/*
+          include: true
+        - pattern: main
+          include: true
     scripts:
       - name: Set Xcode version from repo
         script: |
