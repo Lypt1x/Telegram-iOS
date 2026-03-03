@@ -1,0 +1,125 @@
+workflows:
+  ghost-mode-build:
+    name: Swiftgram Ghost Mode
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      groups:
+        - telegram_secrets
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: ghost-mode
+          include: true
+    scripts:
+      - name: Set Xcode version from repo
+        script: |
+          XCODE_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["xcode"]);')
+          echo "Required Xcode: $XCODE_VERSION"
+          sudo xcode-select -s /Applications/Xcode_$XCODE_VERSION.app/Contents/Developer || \
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Download Metal Toolchain
+        script: |
+          echo "Downloading Metal Toolchain (required for Xcode 26+)..."
+          xcodebuild -downloadComponent MetalToolchain || true
+          echo "Metal Toolchain download complete"
+
+      - name: Install build dependencies
+        script: |
+          brew install ccache || true
+          echo "ccache at: $(which ccache)"
+
+      - name: Create canonical source directory
+        script: |
+          set -x
+          sudo mkdir -p /Users/Shared
+          cp -R $CM_BUILD_DIR /Users/Shared/telegram-ios
+          cd /Users/Shared/telegram-ios
+
+          # Fix: Bazel genrule sandbox has PATH=/usr/bin:/bin:/usr/sbin:/sbin
+          # ccache is at /opt/homebrew/bin. Patch both the BUILD genrule PATH
+          # and the build script to include Homebrew paths.
+
+          # 1) Patch the td BUILD genrule: PATH="$$CMAKE_DIR/..." -> PATH="/opt/homebrew/bin:...$$CMAKE_DIR/..."
+          sed -i '' 's|PATH="$$CMAKE_DIR|PATH="/opt/homebrew/bin:/usr/local/bin:$$CMAKE_DIR|' third-party/td/BUILD
+          echo "BUILD patch applied:"
+          grep 'opt/homebrew' third-party/td/BUILD || echo "WARNING: BUILD patch did not apply"
+
+          # 2) Also patch build-td-bazel.sh to add Homebrew to PATH
+          head -1 third-party/td/build-td-bazel.sh > /tmp/td-build-fixed.sh
+          echo 'export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"' >> /tmp/td-build-fixed.sh
+          tail -n +2 third-party/td/build-td-bazel.sh >> /tmp/td-build-fixed.sh
+          mv /tmp/td-build-fixed.sh third-party/td/build-td-bazel.sh
+          chmod +x third-party/td/build-td-bazel.sh
+          echo "build-td-bazel.sh patch applied:"
+          head -3 third-party/td/build-td-bazel.sh
+
+      - name: Inject API keys
+        script: |
+          cd /Users/Shared/telegram-ios
+          python3 << 'PYEOF'
+          import json, os
+          with open('build-system/appstore-configuration.json', 'r') as f:
+              config = json.load(f)
+          config['api_id'] = os.environ.get('TELEGRAM_API_ID', 'PLACEHOLDER')
+          config['api_hash'] = os.environ.get('TELEGRAM_API_HASH', 'PLACEHOLDER')
+          with open('build-system/appstore-configuration.json', 'w') as f:
+              json.dump(config, f, indent=2)
+          print('API keys injected:', config['api_id'][:4] + '...')
+          PYEOF
+
+      - name: Build the App
+        script: |
+          set -x
+          SOURCE_DIR=/Users/Shared/telegram-ios
+          BAZEL_USER_ROOT="/private/var/tmp/_bazel_containerhost"
+          cd $SOURCE_DIR
+
+          BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
+          export APP_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["app"]);')
+          export COMMIT_COUNT=$(git rev-list --count HEAD)
+          export COMMIT_COUNT="$(($COMMIT_COUNT+$BUILD_NUMBER_OFFSET))"
+          export BUILD_NUMBER="$COMMIT_COUNT"
+
+          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+          python3 -u build-system/Make/Make.py \
+            --bazelUserRoot="$BAZEL_USER_ROOT" \
+            build \
+            --configurationPath="build-system/appstore-configuration.json" \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --configuration=release_arm64 \
+            --buildNumber="$BUILD_NUMBER"
+
+      - name: Collect and strip IPA
+        script: |
+          set -x
+          cd /Users/Shared/telegram-ios
+          OUTPUT_PATH="build/artifacts"
+          mkdir -p "$OUTPUT_PATH"
+          cp bazel-bin/Telegram/Swiftgram.ipa "$OUTPUT_PATH/Swiftgram-raw.ipa"
+
+          cd "$OUTPUT_PATH"
+          mkdir -p ipa_tmp && cd ipa_tmp
+          unzip -q ../Swiftgram-raw.ipa
+
+          # Strip Watch app and extensions that cause sideload issues
+          rm -rf Payload/Swiftgram.app/Watch && echo "Removed Watch"
+          rm -rf Payload/Swiftgram.app/PlugIns && echo "Removed PlugIns"
+
+          ls -la Payload/Swiftgram.app/
+
+          zip -r -q ../Swiftgram.ipa Payload/
+          cd ..
+          rm -rf ipa_tmp Swiftgram-raw.ipa
+          ls -la Swiftgram.ipa
+
+    artifacts:
+      - /Users/Shared/telegram-ios/build/artifacts/Swiftgram.ipa
+
+    cache:
+      cache_paths:
+        - /private/var/tmp/_bazel_containerhost
