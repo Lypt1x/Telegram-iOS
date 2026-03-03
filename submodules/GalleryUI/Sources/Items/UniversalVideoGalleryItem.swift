@@ -1035,7 +1035,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                         let nextTimestamp = timestamp + delta
                         if nextTimestamp > duration {
                             strongVideoNode.seek(0.0)
-                            strongVideoNode.pause()
+                            strongVideoNode.play()
                         } else {
                             strongVideoNode.seek(min(duration, timestamp + delta))
                         }
@@ -1086,15 +1086,15 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
             guard let strongSelf = self else {
                 return
             }
-            if let result = result, strongSelf.scrubbingFrames {
+            if let result = result, strongSelf.scrubbingFrames, let item = strongSelf.item {
                 switch result {
                 case .waitingForData:
                     strongSelf.footerContentNode.setFramePreviewImageIsLoading()
                 case let .image(image):
-                    strongSelf.footerContentNode.setFramePreviewImage(image: image)
+                    strongSelf.footerContentNode.setFramePreviewImage(image: image, isSecret: item.isSecret)
                 }
             } else {
-                strongSelf.footerContentNode.setFramePreviewImage(image: nil)
+                strongSelf.footerContentNode.setFramePreviewImage(image: nil, isSecret: false)
             }
         }).strict()
         
@@ -1157,6 +1157,24 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
             self.item?.performAction(.ad(message.id))
             return true
         }
+        return false
+    }
+    
+    override func contentDoubleTapAction(location: CGPoint) -> Bool {
+        if case let .message(message, _) = self.item?.contentInfo, let _ = message.adAttribute {
+            self.item?.performAction(.ad(message.id))
+            return true
+        }
+        
+        if case let .playback(_, seekable) = self.footerContentNode.content, seekable {
+            if location.x >= self.bounds.width * 0.3 {
+                self.footerContentNode.seekForward?(15.0)
+            } else {
+                self.footerContentNode.seekBackward?(15.0)
+            }
+            return true
+        }
+        
         return false
     }
     
@@ -1359,6 +1377,10 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
             if let content = item.content as? NativeVideoContent {
                 isAnimated = content.fileReference.media.isAnimated
                 self.videoFramePreview = MediaPlayerFramePreview(postbox: item.context.account.postbox, userLocation: content.userLocation, userContentType: .video, fileReference: content.fileReference)
+                if content.fileReference.media.isLivePhoto {
+                    disablePlayerControls = true
+                    isAnimated = false
+                }
             } else if let _ = item.content as? SystemVideoContent {
                 self._title.set(.single(item.presentationData.strings.Message_Video))
             } else if let content = item.content as? WebEmbedVideoContent {
@@ -1961,7 +1983,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
         }
     }
     
-    override func controlsVisibilityUpdated(isVisible: Bool) {
+    override func controlsVisibilityUpdated(isVisible: Bool, animated: Bool) {
         self.areControlsVisible = isVisible
         self.controlsVisiblePromise.set(isVisible)
         
@@ -1969,7 +1991,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
         self.videoNode?.notifyPlaybackControlsHidden(!isVisible)
         
         if let validLayout = self.validLayout {
-            self.containerLayoutUpdated(validLayout.layout, navigationBarHeight: validLayout.navigationBarHeight, transition: .animated(duration: 0.2, curve: .easeInOut))
+            self.containerLayoutUpdated(validLayout.layout, navigationBarHeight: validLayout.navigationBarHeight, transition: animated ? .animated(duration: 0.2, curve: .easeInOut) : .immediate)
         }
     }
     
@@ -3357,7 +3379,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                             if isSelected && value == nil {
                                 return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Check"), color: .white)
                             } else {
-                                return nil
+                                return UIImage()
                             }
                         }), action: { _, f in
                             f(.default)
@@ -3390,7 +3412,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                             if isSelected {
                                 return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Check"), color: .white)
                             } else {
-                                return nil
+                                return UIImage()
                             }
                         }, action: { [weak strongSelf] _, f in
                             f(.default)
@@ -3444,7 +3466,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                                 if isSelected {
                                     return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Check"), color: .white)
                                 } else {
-                                    return nil
+                                    return UIImage()
                                 }
                             }, action: { [weak self] _, f in
                                 f(.default)

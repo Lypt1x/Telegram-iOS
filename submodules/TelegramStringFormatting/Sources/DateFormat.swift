@@ -1,7 +1,9 @@
 import SGSimpleSettings
 import Foundation
+import TelegramCore
 import TelegramPresentationData
 import TelegramUIPreferences
+import TextFormat
 
 public func stringForShortTimestamp(hours: Int32, minutes: Int32, dateTimeFormat: PresentationDateTimeFormat, formatAsPlainText: Bool = false) -> String {
     switch dateTimeFormat.timeFormat {

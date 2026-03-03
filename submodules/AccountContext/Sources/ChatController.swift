@@ -67,6 +67,7 @@ public final class ChatMessageItemAssociatedData: Equatable {
     public let isInline: Bool
     public let showSensitiveContent: Bool
     public let isSuspiciousPeer: Bool
+    public let showTextAsPlaceholder: Bool
     
     public init(
         translateToLanguageSG: String? = nil,
@@ -104,7 +105,8 @@ public final class ChatMessageItemAssociatedData: Equatable {
         isStandalone: Bool = false,
         isInline: Bool = false,
         showSensitiveContent: Bool = false,
-        isSuspiciousPeer: Bool = false
+        isSuspiciousPeer: Bool = false,
+        showTextAsPlaceholder: Bool = false
     ) {
         self.translateToLanguageSG = translateToLanguageSG
         self.translationSettings = translationSettings
@@ -142,6 +144,7 @@ public final class ChatMessageItemAssociatedData: Equatable {
         self.isInline = isInline
         self.showSensitiveContent = showSensitiveContent
         self.isSuspiciousPeer = isSuspiciousPeer
+        self.showTextAsPlaceholder = showTextAsPlaceholder
     }
     
     public static func == (lhs: ChatMessageItemAssociatedData, rhs: ChatMessageItemAssociatedData) -> Bool {
@@ -267,6 +270,7 @@ public enum ChatControllerInteractionLongTapAction {
     case hashtag(String)
     case timecode(Double, String)
     case bankCard(String)
+    case date(Int32)
 }
 
 public enum ChatHistoryMessageSelection: Equatable {

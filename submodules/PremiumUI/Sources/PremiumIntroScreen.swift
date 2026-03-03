@@ -318,6 +318,12 @@ public enum PremiumSource: Equatable {
             } else {
                 return false
             }
+        case .copyProtection:
+            if case .copyProtection = rhs {
+                return true
+            } else {
+                return false
+            }
         case let .auth(lhsPrice):
             if case let .auth(rhsPrice) = rhs, lhsPrice == rhsPrice {
                 return true
@@ -378,6 +384,7 @@ public enum PremiumSource: Equatable {
     case folderTags
     case messageEffects
     case todo
+    case copyProtection
     case auth(String)
     case premiumGift(TelegramMediaFile)
     
@@ -475,6 +482,8 @@ public enum PremiumSource: Equatable {
             return "effects"
         case .todo:
             return "todo"
+        case .copyProtection:
+            return "pm_noforwards"
         case .auth:
             return "auth"
         case .premiumGift:
@@ -508,6 +517,7 @@ public enum PremiumPerk: CaseIterable {
     case folderTags
     case messageEffects
     case todo
+    case copyProtection
     
     case businessLocation
     case businessHours
@@ -543,7 +553,8 @@ public enum PremiumPerk: CaseIterable {
             .folderTags,
             .business,
             .messageEffects,
-            .todo
+            .todo,
+            .copyProtection
         ]
     }
     
@@ -619,6 +630,8 @@ public enum PremiumPerk: CaseIterable {
             return "effects"
         case .todo:
             return "todo"
+        case .copyProtection:
+            return "pm_noforwards"
         case .business:
             return "business"
         case .businessLocation:
@@ -690,6 +703,8 @@ public enum PremiumPerk: CaseIterable {
             return strings.Premium_MessageEffects
         case .todo:
             return strings.Premium_Todo
+        case .copyProtection:
+            return strings.Premium_CopyProtection
         case .businessLocation:
             return strings.Business_Location
         case .businessHours:
@@ -759,6 +774,8 @@ public enum PremiumPerk: CaseIterable {
             return strings.Premium_MessageEffectsInfo
         case .todo:
             return strings.Premium_TodoInfo
+        case .copyProtection:
+            return strings.Premium_CopyProtectionInfo
         case .businessLocation:
             return strings.Business_LocationInfo
         case .businessHours:
@@ -828,6 +845,8 @@ public enum PremiumPerk: CaseIterable {
             return "Premium/Perk/MessageEffects"
         case .todo:
             return "Premium/Perk/Todo"
+        case .copyProtection:
+            return "Premium/Perk/NoForward"
         case .businessLocation:
             return "Premium/BusinessPerk/Location"
         case .businessHours:
@@ -857,6 +876,7 @@ struct PremiumIntroConfiguration {
             .lastSeen,
             .voiceToText,
             .fasterDownload,
+            .copyProtection,
             .translation,
             .todo,
             .animatedEmoji,
@@ -2197,6 +2217,8 @@ private final class PremiumIntroScreenContentComponent: CombinedComponent {
                                 demoSubject = .messageEffects
                             case .todo:
                                 demoSubject = .todo
+                            case .copyProtection:
+                                demoSubject = .copyProtection
                             case .business:
                                 demoSubject = .business
                             default:

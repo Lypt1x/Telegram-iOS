@@ -24,7 +24,7 @@ typedef void (^CompletionBlock)(void);
 - (void)playIfAvailable;
 
 - (void)setPlayButtonHidden:(bool)hidden animated:(bool)animated;
-- (void)toggleSendAsGif;
+- (void)toggleSendAsGif:(bool)showTooltip;
 - (void)toggleSendAsTelescope:(bool)canSendAsTelescope dismissParent:(CompletionBlock)dismissParent;
 
 - (void)setScrubbingPanelApperanceLocked:(bool)locked;

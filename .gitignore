@@ -82,5 +82,6 @@ Telegram.LSP.json
 spm-files
 xcode-files
 .bsp/**
+.sourcekit-lsp/**
 /.claude/
 /buildbox/*

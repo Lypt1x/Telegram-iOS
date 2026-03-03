@@ -111,6 +111,7 @@ extension ChatControllerImpl {
             var autoremoveTimeout: Int32?
             var currentSendAsPeerId: EnginePeer.Id?
             var copyProtectionEnabled: Bool = false
+            var myCopyProtectionEnabled: Bool = false
             var sendPaidMessageStars: StarsAmount?
             var alwaysShowGiftButton: Bool = false
             var disallowedGifts: TelegramDisallowedGifts?
@@ -147,6 +148,8 @@ extension ChatControllerImpl {
             var isGeneralThreadClosed: Bool?
             var premiumGiftOptions: [CachedPremiumGiftOption] = []
             var removePaidMessageFeeData: ChatPresentationInterfaceState.RemovePaidMessageFeeData?
+            var viewForumAsMessages: Bool = false
+            var hasTopics: Bool = false
             
             var preloadNextChatPeerId: EnginePeer.Id?
         }
@@ -296,6 +299,7 @@ extension ChatControllerImpl {
                 peerView.set(context.account.viewTracker.peerView(peerId))
                 var onlineMemberCount: Signal<(total: Int32?, recent: Int32?), NoError> = .single((nil, nil))
                 var hasScheduledMessages: Signal<Bool, NoError> = .single(false)
+                var hasTopics: Signal<Bool, NoError> = .single(false)
                 
                 if peerId.namespace == Namespaces.Peer.CloudChannel {
                     let recentOnlineSignal: Signal<(total: Int32?, recent: Int32?), NoError> = peerView.get()
@@ -352,6 +356,15 @@ extension ChatControllerImpl {
                             |> map { view, _, _ in
                                 return !view.entries.isEmpty
                             }
+                        }
+                    }
+                    
+                    if chatLocation.threadId != nil {
+                        hasTopics = .single(true)
+                    } else {
+                        hasTopics = context.sharedContext.subscribeChatListData(context: context, location: .forum(peerId: peerId))
+                        |> map { value -> Bool in
+                            return !value.items.isEmpty
                         }
                     }
                 }
@@ -686,6 +699,7 @@ extension ChatControllerImpl {
                     context.engine.data.subscribe(TelegramEngine.EngineData.Item.NotificationSettings.Global()),
                     onlineMemberCount,
                     hasScheduledMessages,
+                    hasTopics,
                     displayedCountSignal,
                     threadInfo,
                     hasSearchTags,
@@ -695,7 +709,7 @@ extension ChatControllerImpl {
                     adMessage,
                     displayedPeerVerification,
                     globalPrivacySettings
-                ).startStrict(next: { [weak self] peerView, globalNotificationSettings, onlineMemberCount, hasScheduledMessages, pinnedCount, threadInfo, hasSearchTags, hasSavedChats, isPremiumRequiredForMessaging, managingBot, adMessage, displayedPeerVerification, globalPrivacySettings in
+                ).startStrict(next: { [weak self] peerView, globalNotificationSettings, onlineMemberCount, hasScheduledMessages, hasTopics, pinnedCount, threadInfo, hasSearchTags, hasSavedChats, isPremiumRequiredForMessaging, managingBot, adMessage, displayedPeerVerification, globalPrivacySettings in
                     guard let strongSelf = self else {
                         return
                     }
@@ -704,6 +718,7 @@ extension ChatControllerImpl {
                     
                     if strongSelf.state.peerView === peerView
                         && strongSelf.state.hasScheduledMessages == hasScheduledMessages
+                        && strongSelf.state.hasTopics == hasTopics
                         && strongSelf.state.threadInfo == threadInfo
                         && strongSelf.state.hasSearchTags == hasSearchTags
                         && strongSelf.state.hasSavedChats == hasSavedChats
@@ -714,6 +729,7 @@ extension ChatControllerImpl {
                     }
                     
                     strongSelf.state.hasScheduledMessages = hasScheduledMessages
+                    strongSelf.state.hasTopics = hasTopics
                     
                     var upgradedToPeerId: PeerId?
                     var movedToForumTopics = false
@@ -891,6 +907,7 @@ extension ChatControllerImpl {
                     var currentSendAsPeerId: PeerId?
                     var autoremoveTimeout: Int32?
                     var copyProtectionEnabled: Bool = false
+                    var myCopyProtectionEnabled: Bool = false
                     var hasBirthdayToday = false
                     var peerVerification: PeerVerification?
                     if let peer = peerView.peers[peerView.peerId] {
@@ -901,7 +918,12 @@ extension ChatControllerImpl {
                                 peerVerification = cachedChannelData.verification
                             }
                         }
-                        copyProtectionEnabled = peer.isCopyProtectionEnabled
+                        if let cachedUserData = peerView.cachedData as? CachedUserData {
+                            copyProtectionEnabled = cachedUserData.flags.contains(.copyProtectionEnabled) || cachedUserData.flags.contains(.myCopyProtectionEnabled)
+                            myCopyProtectionEnabled = cachedUserData.flags.contains(.myCopyProtectionEnabled)
+                        } else {
+                            copyProtectionEnabled = peer.isCopyProtectionEnabled
+                        }
                         if let cachedGroupData = peerView.cachedData as? CachedGroupData {
                             if !cachedGroupData.botInfos.isEmpty {
                                 hasBots = true
@@ -956,6 +978,12 @@ extension ChatControllerImpl {
                         }
                     }
                     
+                    if let channel = peerView.peers[peerView.peerId] as? TelegramChannel, channel.flags.contains(.displayForumAsTabs) {
+                        strongSelf.state.viewForumAsMessages = true
+                    } else if let cachedData = peerView.cachedData as? CachedChannelData {
+                        strongSelf.state.viewForumAsMessages = cachedData.viewForumAsMessages.knownValue ?? false
+                    }
+                    
                     let isArchived: Bool = peerView.groupId == Namespaces.PeerGroup.archive
                     
                     var explicitelyCanPinMessages: Bool = false
@@ -1006,9 +1034,11 @@ extension ChatControllerImpl {
                     strongSelf.state.peerGeoLocation = peerGeoLocation
                     strongSelf.state.explicitelyCanPinMessages = explicitelyCanPinMessages
                     strongSelf.state.hasScheduledMessages = hasScheduledMessages
+                    strongSelf.state.hasTopics = hasTopics
                     strongSelf.state.autoremoveTimeout = autoremoveTimeout
                     strongSelf.state.currentSendAsPeerId = currentSendAsPeerId
                     strongSelf.state.copyProtectionEnabled = copyProtectionEnabled
+                    strongSelf.state.myCopyProtectionEnabled = myCopyProtectionEnabled
                     strongSelf.state.hasSearchTags = hasSearchTags
                     strongSelf.state.isPremiumRequiredForMessaging = isPremiumRequiredForMessaging
                     strongSelf.state.sendPaidMessageStars = sendPaidMessageStars
@@ -1370,6 +1400,12 @@ extension ChatControllerImpl {
                     let previousState = strongSelf.state
                         
                     strongSelf.state.hasScheduledMessages = hasScheduledMessages
+                    
+                    if let channel = peerView.peers[peerView.peerId] as? TelegramChannel, channel.flags.contains(.displayForumAsTabs) {
+                        strongSelf.state.viewForumAsMessages = true
+                    } else if let cachedData = peerView.cachedData as? CachedChannelData {
+                        strongSelf.state.viewForumAsMessages = cachedData.viewForumAsMessages.knownValue ?? false
+                    }
                         
                     var renderedPeer: RenderedPeer?
                     var contactStatus: ChatContactStatus?
@@ -1428,6 +1464,8 @@ extension ChatControllerImpl {
                         }
                         renderedPeer = RenderedPeer(peerId: peer.id, peers: peers, associatedMedia: peerView.media)
                     }
+                    
+                    strongSelf.state.hasTopics = true
                     
                     if let savedMessagesPeerId {
                         var peerPresences: [PeerId: PeerPresence] = [:]
@@ -2181,10 +2219,9 @@ extension ChatControllerImpl {
                 let chatLocationPeerId = chatLocation.peerId
                 
                 if let chatLocationPeerId = chatLocationPeerId {
-                    hasPendingMessages = context.account.pendingMessageManager.hasPendingMessages
-                    |> mapToSignal { peerIds -> Signal<Bool, NoError> in
-                        let value = peerIds.contains(chatLocationPeerId)
-                        if value {
+                    hasPendingMessages = context.account.pendingMessageManager.pendingMessageCount
+                    |> mapToSignal { pendingMessageCount -> Signal<Bool, NoError> in
+                        if let value = pendingMessageCount[chatLocationPeerId], value != 0 {
                             return .single(true)
                         } else {
                             return .single(false)

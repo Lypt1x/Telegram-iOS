@@ -302,7 +302,7 @@
                 if (_editingContext != nil)
                 {
                     _timersChangedDisposable = [_editingContext.timersUpdatedSignal startStrictWithNext:^(__unused NSNumber *next)
-                                                {
+                    {
                         __strong TGMediaPickerGalleryInterfaceView *strongSelf = weakSelf;
                         if (strongSelf == nil)
                             return;
@@ -311,7 +311,7 @@
                     } file:__FILE_NAME__ line:__LINE__];
                     
                     _adjustmentsChangedDisposable = [_editingContext.adjustmentsUpdatedSignal startStrictWithNext:^(__unused NSNumber *next)
-                                                     {
+                    {
                         __strong TGMediaPickerGalleryInterfaceView *strongSelf = weakSelf;
                         if (strongSelf == nil)
                             return;
@@ -415,6 +415,18 @@
                 return;
             
             [strongSelf->_editingContext setCaptionAbove:captionIsAbove];
+        };
+        
+        _captionMixin.livePhotoModeUpdated = ^(NSUInteger mode) {
+            __strong TGMediaPickerGalleryInterfaceView *strongSelf = weakSelf;
+            if (strongSelf == nil)
+                return;
+            
+            if (![strongSelf->_currentItem conformsToProtocol:@protocol(TGModernGalleryEditableItem)])
+                return;
+            
+            id<TGModernGalleryEditableItem> galleryEditableItem = (id<TGModernGalleryEditableItem>)strongSelf->_currentItem;
+            [strongSelf->_editingContext setLivePhotoMode:(TGMediaLivePhotoMode)mode forItem:galleryEditableItem.editableMediaItem];
         };
         
         _captionMixin.stickersContext = stickersContext;
@@ -555,6 +567,10 @@
 - (void)updateCameraButtonVisibility
 {
     
+}
+
+- (void)beginEditingCaption {
+    [_captionMixin activateInput];
 }
 
 - (void)setHasCaptions:(bool)hasCaptions
@@ -714,6 +730,11 @@
                 if ([item.asset isKindOfClass:[TGCameraCapturedVideo class]] && ((TGCameraCapturedVideo *)item.asset).isAnimation) {
                     sendableAsGif = false;
                 }
+            } else if ([strongSelf->_currentItem isKindOfClass:[TGMediaPickerGalleryFetchResultItem class]]) {
+                TGMediaPickerGalleryFetchResultItem *item = (TGMediaPickerGalleryFetchResultItem *)strongSelf->_currentItem;
+                if ([item.asset isKindOfClass:[TGMediaAsset class]] && ((TGMediaAsset *)item.asset).type == TGMediaAssetPhotoType) {
+                    sendableAsGif = false;
+                }
             }
             strongSelf->_muteButton.hidden = !sendableAsGif;
             
@@ -732,6 +753,7 @@
         }
     } file:__FILE_NAME__ line:__LINE__]];
     
+    bool hasLivePhotoButton = false;
     UIImage *muteIcon = [TGPhotoEditorInterfaceAssets muteIcon];
     UIImage *muteActiveIcon = [TGPhotoEditorInterfaceAssets muteActiveIcon];
     if ([item isKindOfClass:[TGMediaPickerGalleryVideoItem class]]) {
@@ -743,10 +765,24 @@
                 muteActiveIcon = [TGPhotoEditorInterfaceAssets gifActiveIcon];
             }
         }
+    } else if ([item isKindOfClass:[TGMediaPickerGalleryFetchResultItem class]]) {
+        TGMediaPickerGalleryFetchResultItem *photoGalleryItem = (TGMediaPickerGalleryFetchResultItem *)item;
+        if ([photoGalleryItem.asset isKindOfClass:[TGMediaAsset class]]) {
+            TGMediaAsset *asset = (TGMediaAsset *)photoGalleryItem.asset;
+            if (asset.subtypes & TGMediaAssetSubtypePhotoLive) {
+                hasLivePhotoButton = true;
+            }
+        }
     }
     [_muteButton setImage:muteIcon forState:UIControlStateNormal];
     [_muteButton setImage:muteActiveIcon forState:UIControlStateSelected];
     [_muteButton setImage:muteActiveIcon forState:UIControlStateSelected | UIControlStateHighlighted];
+    
+    if (@"".length == 0) {
+        hasLivePhotoButton = false;
+    }
+    
+    [_captionMixin setLivePhotoHidden:!hasLivePhotoButton];
     
     [self setNeedsLayout];
 }
@@ -1066,13 +1102,17 @@
         [_adjustmentsDisposable setDisposable:[[[[galleryEditableItem.editingContext adjustmentsSignalForItem:editableMediaItem] mapToSignal:^SSignal *(id<TGMediaEditAdjustments> adjustments) {
             __strong id<TGModernGalleryEditableItem> strongGalleryEditableItem = weakGalleryEditableItem;
             if (strongGalleryEditableItem != nil) {
-                return [[strongGalleryEditableItem.editingContext timerSignalForItem:editableMediaItem] map:^id(id timer) {
-                    NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
-                    if (adjustments != nil)
-                        dict[@"adjustments"] = adjustments;
-                    if (timer != nil)
-                        dict[@"timer"] = timer;
-                    return dict;
+                return [[strongGalleryEditableItem.editingContext timerSignalForItem:editableMediaItem] mapToSignal:^id(id timer) {
+                    return [[strongGalleryEditableItem.editingContext livePhotoModeSignalForItem:editableMediaItem] map:^id(id livePhotoMode) {
+                        NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
+                        if (adjustments != nil)
+                            dict[@"adjustments"] = adjustments;
+                        if (timer != nil)
+                            dict[@"timer"] = timer;
+                        if (livePhotoMode != nil)
+                            dict[@"livePhotoMode"] = livePhotoMode;
+                        return dict;
+                    }];
                 }];
             } else {
                 return [SSignal never];
@@ -1085,6 +1125,12 @@
             
             id<TGMediaEditAdjustments> adjustments = dict[@"adjustments"];
             NSNumber *timer = dict[@"timer"];
+            TGMediaLivePhotoMode livePhotoMode = (TGMediaLivePhotoMode)[dict[@"livePhotoMode"] unsignedIntValue];
+            
+            [strongSelf->_captionMixin setLivePhotoMode:livePhotoMode];
+            if ([strongSelf->_currentItemView isKindOfClass:[TGMediaPickerGalleryPhotoItemView class]]) {
+                [((TGMediaPickerGalleryPhotoItemView *)strongSelf->_currentItemView) setLivePhotoMode:livePhotoMode];
+            }
             
             [strongSelf->_captionMixin setTimeout:[timer intValue] isVideo:editableMediaItem.isVideo isCaptionAbove:isCaptionAbove];
             
@@ -1433,6 +1479,7 @@
             _landscapeToolbarView.alpha = alpha;
             _captionMixin.inputPanelView.alpha = alpha;
             _captionMixin.backgroundView.alpha = alpha;
+            _captionMixin.livePhotoButtonView.alpha = alpha;
         } completion:^(BOOL finished)
         {
             if (finished)
@@ -1445,6 +1492,7 @@
                 _landscapeToolbarView.userInteractionEnabled = !hidden;
                 _captionMixin.inputPanelView.userInteractionEnabled = !hidden;
                 _captionMixin.backgroundView.userInteractionEnabled = !hidden;
+                _captionMixin.livePhotoButtonView.userInteractionEnabled = !hidden;
             }
         }];
         
@@ -1488,6 +1536,9 @@
         
         _captionMixin.backgroundView.alpha = alpha;
         _captionMixin.backgroundView.userInteractionEnabled = !hidden;
+        
+        _captionMixin.livePhotoButtonView.alpha = alpha;
+        _captionMixin.livePhotoButtonView.userInteractionEnabled = !hidden;
     }
     
     if (hidden)
@@ -1541,6 +1592,18 @@
     }
 }
 
+- (void)setupGifEditing {
+    if (![_currentItem conformsToProtocol:@protocol(TGModernGalleryEditableItem)])
+        return;
+    
+    TGModernGalleryItemView *currentItemView = _currentItemView;
+    bool sendableAsGif = [currentItemView isKindOfClass:[TGMediaPickerGalleryVideoItemView class]];
+    if (sendableAsGif)
+        [(TGMediaPickerGalleryVideoItemView *)currentItemView toggleSendAsGif:false];
+    
+    [_muteButton removeFromSuperview];
+}
+
 - (void)toggleSendAsGif
 {
     if (![_currentItem conformsToProtocol:@protocol(TGModernGalleryEditableItem)])
@@ -1549,7 +1612,7 @@
     TGModernGalleryItemView *currentItemView = _currentItemView;
     bool sendableAsGif = [currentItemView isKindOfClass:[TGMediaPickerGalleryVideoItemView class]];
     if (sendableAsGif)
-        [(TGMediaPickerGalleryVideoItemView *)currentItemView toggleSendAsGif];
+        [(TGMediaPickerGalleryVideoItemView *)currentItemView toggleSendAsGif:true];
 }
 
 - (void)toggleSendAsTelescope
@@ -1755,6 +1818,7 @@
             || [view isDescendantOfView:_landscapeToolbarView]
             || [view isDescendantOfView:_selectedPhotosView]
             || [view isDescendantOfView:_captionMixin.inputPanelView]
+            || [view isDescendantOfView:_captionMixin.livePhotoButtonView]
             || ([view isDescendantOfView:_captionMixin.dismissView] && _captionMixin.dismissView.alpha > 0.0)
             || [view isKindOfClass:[TGMenuButtonView class]])
             
