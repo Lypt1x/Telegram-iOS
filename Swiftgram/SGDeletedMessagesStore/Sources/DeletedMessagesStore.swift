@@ -124,13 +124,13 @@ public final class DeletedMessagesStore {
             sqlite3_bind_int(stmt, 1, messageId)
             sqlite3_bind_int64(stmt, 2, Int64(peerId))
             sqlite3_bind_int64(stmt, 3, Int64(authorId))
-            text.withCString { ptr in
+            _ = text.withCString { ptr in
                 sqlite3_bind_text(stmt, 4, ptr, -1, SQLITE_TRANSIENT)
             }
             sqlite3_bind_int(stmt, 5, date)
             sqlite3_bind_int(stmt, 6, deletedDate)
             sqlite3_bind_int(stmt, 7, isOutgoing ? 1 : 0)
-            chatTitle.withCString { ptr in
+            _ = chatTitle.withCString { ptr in
                 sqlite3_bind_text(stmt, 8, ptr, -1, SQLITE_TRANSIENT)
             }
 
