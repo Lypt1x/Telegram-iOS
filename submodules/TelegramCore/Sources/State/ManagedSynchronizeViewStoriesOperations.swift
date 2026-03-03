@@ -4,6 +4,14 @@ import SwiftSignalKit
 import TelegramApi
 import MtProtoKit
 
+// MARK: - Ghost Mode helper
+private func isGhostModeHideStoryViews() -> Bool {
+    let defaults = UserDefaults.standard
+    guard defaults.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if defaults.object(forKey: "sg_ghostModeHideStoryViews") == nil { return true }
+    return defaults.bool(forKey: "sg_ghostModeHideStoryViews")
+}
+
 private final class ManagedSynchronizeViewStoriesOperationsHelper {
     var operationDisposables: [PeerId: (Int32, Disposable)] = [:]
     
@@ -119,6 +127,11 @@ func managedSynchronizeViewStoriesOperations(postbox: Postbox, network: Network,
 }
 
 private func pushStoriesAreSeen(postbox: Postbox, network: Network, stateManager: AccountStateManager, peer: Peer, operation: SynchronizeViewStoriesOperation) -> Signal<Void, NoError> {
+    // GHOST MODE: Don't send story read status to server
+    if isGhostModeHideStoryViews() {
+        return .complete()
+    }
+    
     guard let inputPeer = apiInputPeer(peer) else {
         return .complete()
     }

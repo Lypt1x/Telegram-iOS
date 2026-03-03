@@ -19,6 +19,14 @@ import PhotoResources
 import PeerInfoPaneNode
 import WebUI
 
+private func isGhostModeHideOnlineStatus() -> Bool {
+    guard UserDefaults.standard.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if let val = UserDefaults.standard.object(forKey: "sg_ghostModeHideOnlineStatus") {
+        return (val as? Bool) ?? true
+    }
+    return true
+}
+
 enum PeerInfoUpdatingAvatar {
     case none
     case image(TelegramMediaImageRepresentation)
@@ -1186,6 +1194,9 @@ func peerInfoScreenData(
                 let manager = Atomic<Manager>(value: Manager())
                 let notify: () -> Void = {
                     let data = manager.with { manager -> PeerInfoStatusData? in
+                        if isMyProfile && isGhostModeHideOnlineStatus() {
+                            return PeerInfoStatusData(text: "👻 Ghost Mode", isActivity: false, isHiddenStatus: false, key: nil)
+                        }
                         if let presence = manager.currentValue {
                             let timestamp = CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970
                             let (text, isActivity) = stringAndActivityForUserPresence(strings: strings, dateTimeFormat: dateTimeFormat, presence: EnginePeer.Presence(presence), relativeTo: Int32(timestamp), expanded: true)

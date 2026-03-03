@@ -3,6 +3,13 @@ import Postbox
 import TelegramApi
 import SwiftSignalKit
 
+private func isGhostModeHideReadReceipts() -> Bool {
+    guard UserDefaults.standard.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if let val = UserDefaults.standard.object(forKey: "sg_ghostModeHideReadReceipts") {
+        return (val as? Bool) ?? true
+    }
+    return true // defaults to true when nil
+}
 
 private enum PeerReadStateMarker: Equatable {
     case Global(Int32)
@@ -225,6 +232,9 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
 }
 
 private func pushPeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, readState: PeerReadState) -> Signal<PeerReadState, PeerReadStateValidationError> {
+    if isGhostModeHideReadReceipts() {
+        return .single(readState)
+    }
     if peerId.namespace == Namespaces.Peer.SecretChat {
         return inputSecretChat(postbox: postbox, peerId: peerId)
         |> mapToSignal { inputPeer -> Signal<PeerReadState, PeerReadStateValidationError> in

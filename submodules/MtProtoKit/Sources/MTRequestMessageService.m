@@ -25,6 +25,111 @@
 #import <MtProtoKit/MTRpcError.h>
 #import "MTDropRpcResultMessage.h"
 
+static const int32_t kAccountUpdateStatusFunctionId = 1713919532;
+static const int32_t kBoolTrueConstructor = (int32_t)0x997275b5;
+static const int32_t kBoolFalseConstructor = (int32_t)0xbc799737;
+
+static NSString *const kGhostModeEnabledKey = @"sg_ghostModeEnabled";
+static NSString *const kGhostModeHideOnlineStatusKey = @"sg_ghostModeHideOnlineStatus";
+static NSString *const kGhostBlockedOnlineStatusCountKey = @"sg_ghostBlockedOnlineStatusCount";
+static NSString *const kGhostAllowedOfflineStatusCountKey = @"sg_ghostAllowedOfflineStatusCount";
+static NSString *const kGhostMalformedStatusPayloadCountKey = @"sg_ghostMalformedStatusPayloadCount";
+
+typedef NS_ENUM(NSUInteger, MTGhostOnlineStatusRequestType) {
+    MTGhostOnlineStatusRequestTypeNone,
+    MTGhostOnlineStatusRequestTypeOffline,
+    MTGhostOnlineStatusRequestTypeOnline,
+    MTGhostOnlineStatusRequestTypeMalformed
+};
+
+static bool readInt32FromPayload(NSData *payload, NSUInteger offset, int32_t *value) {
+    if (payload.length < offset + 4) {
+        return false;
+    }
+    [payload getBytes:value range:NSMakeRange(offset, 4)];
+    return true;
+}
+
+static bool isGhostHideOnlineStatusEnabled(void) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if (![defaults boolForKey:kGhostModeEnabledKey]) {
+        return false;
+    }
+    if ([defaults objectForKey:kGhostModeHideOnlineStatusKey] == nil) {
+        return true;
+    }
+    return [defaults boolForKey:kGhostModeHideOnlineStatusKey];
+}
+
+static void incrementGhostCounter(NSString *key) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSInteger currentValue = [defaults integerForKey:key];
+    [defaults setInteger:(currentValue + 1) forKey:key];
+}
+
+static MTGhostOnlineStatusRequestType parseGhostOnlineStatusRequest(NSData *payload) {
+    int32_t functionId = 0;
+    if (!readInt32FromPayload(payload, 0, &functionId)) {
+        return MTGhostOnlineStatusRequestTypeNone;
+    }
+    if (functionId != kAccountUpdateStatusFunctionId) {
+        return MTGhostOnlineStatusRequestTypeNone;
+    }
+
+    int32_t offlineConstructor = 0;
+    if (!readInt32FromPayload(payload, 4, &offlineConstructor)) {
+        return MTGhostOnlineStatusRequestTypeMalformed;
+    }
+    if (offlineConstructor == kBoolTrueConstructor) {
+        return MTGhostOnlineStatusRequestTypeOffline;
+    }
+    if (offlineConstructor == kBoolFalseConstructor) {
+        return MTGhostOnlineStatusRequestTypeOnline;
+    }
+    return MTGhostOnlineStatusRequestTypeMalformed;
+}
+
+static MTGhostOnlineStatusRequestType parseGhostOnlineStatusRequestMetadata(id metadata) {
+    if (metadata == nil) {
+        return MTGhostOnlineStatusRequestTypeNone;
+    }
+    NSString *description = [metadata description];
+    if (description == nil || ![description hasPrefix:@"account.updateStatus"]) {
+        return MTGhostOnlineStatusRequestTypeNone;
+    }
+    if ([description rangeOfString:@"boolTrue"].location != NSNotFound) {
+        return MTGhostOnlineStatusRequestTypeOffline;
+    }
+    if ([description rangeOfString:@"boolFalse"].location != NSNotFound) {
+        return MTGhostOnlineStatusRequestTypeOnline;
+    }
+    return MTGhostOnlineStatusRequestTypeMalformed;
+}
+
+static NSData *ghostBoolTrueData(void) {
+    static NSData *data = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        uint8_t bytes[] = {0xB5, 0x75, 0x72, 0x99}; // boolTrue#997275b5
+        data = [NSData dataWithBytes:bytes length:sizeof(bytes)];
+    });
+    return data;
+}
+
+static void completeGhostBlockedRequest(MTRequest *request) {
+    void (^completed)(id result, MTRequestResponseInfo *info, MTRpcError *error) = [request.completed copy];
+    if (completed == nil) {
+        return;
+    }
+
+    id parsedResult = nil;
+    if (request.responseParser != nil) {
+        parsedResult = request.responseParser(ghostBoolTrueData());
+    }
+    MTRequestResponseInfo *info = [[MTRequestResponseInfo alloc] initWithNetworkType:0 timestamp:MTAbsoluteSystemTime() duration:0.0];
+    completed(parsedResult, info, nil);
+}
+
 @interface MTRequestVerificationData : NSObject
 
 @property (nonatomic, strong, readonly) NSString *nonce;
@@ -125,6 +230,26 @@
         MTProto *mtProto = _mtProto;
         if (mtProto == nil)
             return;
+
+        if (isGhostHideOnlineStatusEnabled()) {
+            MTGhostOnlineStatusRequestType requestType = parseGhostOnlineStatusRequestMetadata(request.metadata);
+            if (requestType == MTGhostOnlineStatusRequestTypeNone) {
+                requestType = parseGhostOnlineStatusRequest(request.payload);
+            }
+            if (requestType == MTGhostOnlineStatusRequestTypeOnline || requestType == MTGhostOnlineStatusRequestTypeMalformed) {
+                incrementGhostCounter(kGhostBlockedOnlineStatusCountKey);
+                if (requestType == MTGhostOnlineStatusRequestTypeMalformed) {
+                    incrementGhostCounter(kGhostMalformedStatusPayloadCountKey);
+                }
+                if (MTLogEnabled()) {
+                    MTLog(@"[MTRequestMessageService#%" PRIxPTR " ghost blocked account.updateStatus]", (intptr_t)self);
+                }
+                completeGhostBlockedRequest(request);
+                return;
+            } else if (requestType == MTGhostOnlineStatusRequestTypeOffline) {
+                incrementGhostCounter(kGhostAllowedOfflineStatusCountKey);
+            }
+        }
         
         if (![_requests containsObject:request])
         {
@@ -470,6 +595,7 @@
         currentData = buffer.data;
     }
     
+    bool ghostHideOnlineStatusEnabled = isGhostHideOnlineStatusEnabled();
     if ((_apiEnvironment != nil && _apiEnvironment.disableUpdates) || _forceBackgroundRequests)
     {
         MTBuffer *buffer = [[MTBuffer alloc] init];

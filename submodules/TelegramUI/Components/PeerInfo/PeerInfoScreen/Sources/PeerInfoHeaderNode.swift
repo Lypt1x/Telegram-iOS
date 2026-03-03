@@ -46,6 +46,14 @@ import BundleIconComponent
 import MarqueeComponent
 import EdgeEffect
 
+private func isGhostModeHideOnlineStatus() -> Bool {
+    guard UserDefaults.standard.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if let val = UserDefaults.standard.object(forKey: "sg_ghostModeHideOnlineStatus") {
+        return (val as? Bool) ?? true
+    }
+    return true
+}
+
 final class PeerInfoHeaderNavigationTransition {
     let sourceNavigationBar: NavigationBar
     let sourceTitleView: ChatTitleView
@@ -1262,9 +1270,13 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 usernameString = ("", MultiScaleTextState.Attributes(font: Font.regular(16.0), color: .white))
             } else if self.isMyProfile {
                 let subtitleColor: UIColor
-                subtitleColor = .white
-                
-                subtitleStringText = presentationData.strings.Presence_online
+                if isGhostModeHideOnlineStatus() {
+                    subtitleColor = UIColor(white: 1.0, alpha: 0.65)
+                    subtitleStringText = "👻 Ghost Mode"
+                } else {
+                    subtitleColor = .white
+                    subtitleStringText = presentationData.strings.Presence_online
+                }
                 subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: subtitleColor)
                 smallSubtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(16.0), color: .white, shadowColor: titleShadowColor)
                 
@@ -1272,13 +1284,19 @@ final class PeerInfoHeaderNode: ASDisplayNode {
 
                 let (maybePanelStatusData, _, _) = panelStatusData
                 if let panelStatusData = maybePanelStatusData {
-                    let subtitleColor: UIColor
-                    if panelStatusData.isActivity {
-                        subtitleColor = UIColor.white
+                    let panelText: String
+                    let panelColor: UIColor
+                    if isGhostModeHideOnlineStatus() {
+                        panelText = "👻 Ghost Mode"
+                        panelColor = UIColor(white: 1.0, alpha: 0.65)
+                    } else if panelStatusData.isActivity {
+                        panelText = panelStatusData.text
+                        panelColor = UIColor.white
                     } else {
-                        subtitleColor = UIColor.white
+                        panelText = panelStatusData.text
+                        panelColor = UIColor.white
                     }
-                    panelSubtitleString = (panelStatusData.text, MultiScaleTextState.Attributes(font: Font.regular(17.0), color: subtitleColor))
+                    panelSubtitleString = (panelText, MultiScaleTextState.Attributes(font: Font.regular(17.0), color: panelColor))
                 }
             } else if let _ = threadData {
                 let subtitleColor: UIColor

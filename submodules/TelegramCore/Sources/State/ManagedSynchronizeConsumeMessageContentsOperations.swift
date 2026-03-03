@@ -5,6 +5,14 @@ import TelegramApi
 import MtProtoKit
 
 
+private func isGhostModeHideReadReceipts() -> Bool {
+    guard UserDefaults.standard.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if let val = UserDefaults.standard.object(forKey: "sg_ghostModeHideReadReceipts") {
+        return (val as? Bool) ?? true
+    }
+    return true
+}
+
 private final class ManagedSynchronizeConsumeMessageContentsOperationHelper {
     var operationDisposables: [Int32: Disposable] = [:]
     
@@ -111,6 +119,9 @@ func managedSynchronizeConsumeMessageContentOperations(postbox: Postbox, network
 
 private func synchronizeConsumeMessageContents(transaction: Transaction, network: Network, stateManager: AccountStateManager, peerId: PeerId, operation: SynchronizeConsumeMessageContentsOperation) -> Signal<Void, NoError> {
     if peerId.namespace == Namespaces.Peer.CloudUser || peerId.namespace == Namespaces.Peer.CloudGroup {
+        if isGhostModeHideReadReceipts() {
+            return .complete()
+        }
         return network.request(Api.functions.messages.readMessageContents(id: operation.messageIds.map { $0.id }))
         |> map(Optional.init)
         |> `catch` { _ -> Signal<Api.messages.AffectedMessages?, NoError> in
@@ -128,6 +139,9 @@ private func synchronizeConsumeMessageContents(transaction: Transaction, network
         }
     } else if peerId.namespace == Namespaces.Peer.CloudChannel {
         if let peer = transaction.getPeer(peerId), let inputChannel = apiInputChannel(peer) {
+            if isGhostModeHideReadReceipts() {
+                return .complete()
+            }
             return network.request(Api.functions.channels.readMessageContents(channel: inputChannel, id: operation.messageIds.map { $0.id }))
             |> map(Optional.init)
             |> `catch` { _ -> Signal<Api.Bool?, NoError> in

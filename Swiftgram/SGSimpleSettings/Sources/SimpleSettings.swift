@@ -166,6 +166,13 @@ public class SGSimpleSettings {
         case dismissedSGSuggestions
         case duckyAppIconAvailable
         case transcriptionBackend
+        
+        // Ghost Mode
+        case ghostModeEnabled = "sg_ghostModeEnabled"
+        case ghostModeHideOnlineStatus = "sg_ghostModeHideOnlineStatus"
+        case ghostModeHideReadReceipts = "sg_ghostModeHideReadReceipts"
+        case ghostModeHideTypingIndicator = "sg_ghostModeHideTypingIndicator"
+        case ghostModeHideStoryViews = "sg_ghostModeHideStoryViews"
         case translationBackend
         case customAppBadge
         case canUseNY
@@ -319,6 +326,13 @@ public class SGSimpleSettings {
         Keys.dismissedSGSuggestions.rawValue: [],
         Keys.duckyAppIconAvailable.rawValue: true,
         Keys.transcriptionBackend.rawValue: TranscriptionBackend.default.rawValue,
+        
+        // Ghost Mode defaults
+        Keys.ghostModeEnabled.rawValue: false,
+        Keys.ghostModeHideOnlineStatus.rawValue: true,
+        Keys.ghostModeHideReadReceipts.rawValue: true,
+        Keys.ghostModeHideTypingIndicator.rawValue: true,
+        Keys.ghostModeHideStoryViews.rawValue: true,
         Keys.translationBackend.rawValue: TranslationBackend.default.rawValue,
         Keys.customAppBadge.rawValue: "",
         Keys.canUseNY.rawValue: false,
@@ -580,6 +594,22 @@ public class SGSimpleSettings {
 
     @UserDefault(key: Keys.customAppBadge.rawValue)
     public var customAppBadge: String
+    
+    // MARK: - Ghost Mode
+    @UserDefault(key: Keys.ghostModeEnabled.rawValue)
+    public var ghostModeEnabled: Bool
+    
+    @UserDefault(key: Keys.ghostModeHideOnlineStatus.rawValue)
+    public var ghostModeHideOnlineStatus: Bool
+    
+    @UserDefault(key: Keys.ghostModeHideReadReceipts.rawValue)
+    public var ghostModeHideReadReceipts: Bool
+    
+    @UserDefault(key: Keys.ghostModeHideTypingIndicator.rawValue)
+    public var ghostModeHideTypingIndicator: Bool
+
+    @UserDefault(key: Keys.ghostModeHideStoryViews.rawValue)
+    public var ghostModeHideStoryViews: Bool
 
     @UserDefault(key: Keys.canUseNY.rawValue)
     public var canUseNY: Bool
@@ -663,3 +693,4 @@ public func sgUseShortAllChatsTitle(_ default: Bool) -> Bool {
             return `default`
     }
 }
+

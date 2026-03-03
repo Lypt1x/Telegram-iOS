@@ -3,6 +3,14 @@ import Postbox
 import SwiftSignalKit
 import TelegramApi
 
+// MARK: - Ghost Mode helper
+private func isGhostModeHideReadReceipts() -> Bool {
+    let defaults = UserDefaults.standard
+    guard defaults.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if defaults.object(forKey: "sg_ghostModeHideReadReceipts") == nil { return true }
+    return defaults.bool(forKey: "sg_ghostModeHideReadReceipts")
+}
+
 private struct DiscussionMessage {
     var messageId: MessageId
     var channelMessageId: MessageId?
@@ -459,49 +467,53 @@ private class ReplyThreadHistoryContextImpl {
             }
 
             if let subPeerId {
-                let signal = strongSelf.account.network.request(Api.functions.messages.readSavedHistory(parentPeer: inputPeer, peer: subPeerId, maxId: messageIndex.id.id))
-                |> `catch` { _ -> Signal<Api.Bool, NoError> in
-                    return .single(.boolFalse)
-                }
-                |> ignoreValues
-                if revalidate {
-                }
-                strongSelf.readDisposable.set(signal.start())
-            } else {
-                var signal = strongSelf.account.network.request(Api.functions.messages.readDiscussion(peer: inputPeer, msgId: Int32(clamping: threadId), readMaxId: messageIndex.id.id))
-                |> `catch` { _ -> Signal<Api.Bool, NoError> in
-                    return .single(.boolFalse)
-                }
-                |> ignoreValues
-                if revalidate {
-                    let validateSignal = strongSelf.account.network.request(Api.functions.messages.getDiscussionMessage(peer: inputPeer, msgId: Int32(clamping: threadId)))
-                    |> map { result -> (MessageId?, Int) in
-                        switch result {
-                        case let .discussionMessage(discussionMessageData):
-                            let (readInboxMaxId, unreadCount) = (discussionMessageData.readInboxMaxId, discussionMessageData.unreadCount)
-                            return (readInboxMaxId.flatMap({ MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: $0) }), Int(unreadCount))
-                        }
-                    }
-                    |> `catch` { _ -> Signal<(MessageId?, Int)?, NoError> in
-                        return .single(nil)
-                    }
-                    |> afterNext { result in
-                        guard let (incomingMessageId, count) = result else {
-                            return
-                        }
-                        Queue.mainQueue().async {
-                            guard let strongSelf = self else {
-                                return
-                            }
-                            strongSelf.maxReadIncomingMessageIdValue = incomingMessageId
-                            strongSelf.unreadCountValue = count
-                        }
+                if !isGhostModeHideReadReceipts() {
+                    let signal = strongSelf.account.network.request(Api.functions.messages.readSavedHistory(parentPeer: inputPeer, peer: subPeerId, maxId: messageIndex.id.id))
+                    |> `catch` { _ -> Signal<Api.Bool, NoError> in
+                        return .single(.boolFalse)
                     }
                     |> ignoreValues
-                    signal = signal
-                    |> then(validateSignal)
+                    if revalidate {
+                    }
+                    strongSelf.readDisposable.set(signal.start())
                 }
-                strongSelf.readDisposable.set(signal.start())
+            } else {
+                if !isGhostModeHideReadReceipts() {
+                    var signal = strongSelf.account.network.request(Api.functions.messages.readDiscussion(peer: inputPeer, msgId: Int32(clamping: threadId), readMaxId: messageIndex.id.id))
+                    |> `catch` { _ -> Signal<Api.Bool, NoError> in
+                        return .single(.boolFalse)
+                    }
+                    |> ignoreValues
+                    if revalidate {
+                        let validateSignal = strongSelf.account.network.request(Api.functions.messages.getDiscussionMessage(peer: inputPeer, msgId: Int32(clamping: threadId)))
+                        |> map { result -> (MessageId?, Int) in
+                            switch result {
+                            case let .discussionMessage(discussionMessageData):
+                                let (readInboxMaxId, unreadCount) = (discussionMessageData.readInboxMaxId, discussionMessageData.unreadCount)
+                                return (readInboxMaxId.flatMap({ MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: $0) }), Int(unreadCount))
+                            }
+                        }
+                        |> `catch` { _ -> Signal<(MessageId?, Int)?, NoError> in
+                            return .single(nil)
+                        }
+                        |> afterNext { result in
+                            guard let (incomingMessageId, count) = result else {
+                                return
+                            }
+                            Queue.mainQueue().async {
+                                guard let strongSelf = self else {
+                                    return
+                                }
+                                strongSelf.maxReadIncomingMessageIdValue = incomingMessageId
+                                strongSelf.unreadCountValue = count
+                            }
+                        }
+                        |> ignoreValues
+                        signal = signal
+                        |> then(validateSignal)
+                    }
+                    strongSelf.readDisposable.set(signal.start())
+                }
             }
         })
     }

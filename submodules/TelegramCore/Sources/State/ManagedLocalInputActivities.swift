@@ -4,6 +4,15 @@ import SwiftSignalKit
 import TelegramApi
 import MtProtoKit
 
+// MARK: - Ghost Mode helper
+private func isGhostModeHideTypingIndicator() -> Bool {
+    let defaults = UserDefaults.standard
+    guard defaults.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if defaults.object(forKey: "sg_ghostModeHideTypingIndicator") == nil { return true }
+    return defaults.bool(forKey: "sg_ghostModeHideTypingIndicator")
+}
+
+
 
 public struct PeerActivitySpace: Hashable {
     public enum Category: Equatable, Hashable {
@@ -142,6 +151,11 @@ private func actionFromActivity(_ activity: PeerInputActivity?) -> Api.SendMessa
 }
 
 private func requestActivity(postbox: Postbox, network: Network, accountPeerId: PeerId, peerId: PeerId, threadId: Int64?, activity: PeerInputActivity?) -> Signal<Void, NoError> {
+    // GHOST MODE: Block typing indicator
+    if isGhostModeHideTypingIndicator() {
+        return .complete()
+    }
+    
     return postbox.transaction { transaction -> Signal<Void, NoError> in
         if let peer = transaction.getPeer(peerId) {
             if peerId == accountPeerId {

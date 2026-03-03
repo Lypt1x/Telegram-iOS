@@ -5,6 +5,14 @@ import TelegramApi
 import MtProtoKit
 import CryptoUtils
 
+private func isGhostModeHideReadReceipts() -> Bool {
+    guard UserDefaults.standard.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if let val = UserDefaults.standard.object(forKey: "sg_ghostModeHideReadReceipts") {
+        return (val as? Bool) ?? true
+    }
+    return true
+}
+
 private struct Md5Hash: Hashable {
     public let data: Data
     
@@ -248,6 +256,9 @@ func managedReadReactionActions(postbox: Postbox, network: Network, stateManager
 
 private func synchronizeConsumeMessageContents(transaction: Transaction, postbox: Postbox, network: Network, stateManager: AccountStateManager, id: MessageId) -> Signal<Void, NoError> {
     if id.peerId.namespace == Namespaces.Peer.CloudUser || id.peerId.namespace == Namespaces.Peer.CloudGroup {
+        if isGhostModeHideReadReceipts() {
+            return .complete()
+        }
         return network.request(Api.functions.messages.readMessageContents(id: [id.id]))
             |> map(Optional.init)
             |> `catch` { _ -> Signal<Api.messages.AffectedMessages?, NoError> in
@@ -283,6 +294,9 @@ private func synchronizeConsumeMessageContents(transaction: Transaction, postbox
             }
     } else if id.peerId.namespace == Namespaces.Peer.CloudChannel {
         if let peer = transaction.getPeer(id.peerId), let inputChannel = apiInputChannel(peer) {
+            if isGhostModeHideReadReceipts() {
+                return .complete()
+            }
             return network.request(Api.functions.channels.readMessageContents(channel: inputChannel, id: [id.id]))
                 |> `catch` { _ -> Signal<Api.Bool, NoError> in
                     return .single(.boolFalse)
@@ -317,6 +331,9 @@ private func synchronizeConsumeMessageContents(transaction: Transaction, postbox
 
 private func synchronizeReadMessageReactions(transaction: Transaction, postbox: Postbox, network: Network, stateManager: AccountStateManager, id: MessageId) -> Signal<Void, NoError> {
     if id.peerId.namespace == Namespaces.Peer.CloudUser || id.peerId.namespace == Namespaces.Peer.CloudGroup {
+        if isGhostModeHideReadReceipts() {
+            return .complete()
+        }
         return network.request(Api.functions.messages.readMessageContents(id: [id.id]))
         |> map(Optional.init)
         |> `catch` { _ -> Signal<Api.messages.AffectedMessages?, NoError> in
@@ -352,6 +369,9 @@ private func synchronizeReadMessageReactions(transaction: Transaction, postbox: 
         }
     } else if id.peerId.namespace == Namespaces.Peer.CloudChannel {
         if let peer = transaction.getPeer(id.peerId), let inputChannel = apiInputChannel(peer) {
+            if isGhostModeHideReadReceipts() {
+                return .complete()
+            }
             return network.request(Api.functions.channels.readMessageContents(channel: inputChannel, id: [id.id]))
             |> `catch` { _ -> Signal<Api.Bool, NoError> in
                 return .single(.boolFalse)

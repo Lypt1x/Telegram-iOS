@@ -5,6 +5,14 @@ import TelegramApi
 import MtProtoKit
 
 
+private func isGhostModeHideReadReceipts() -> Bool {
+    guard UserDefaults.standard.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if let val = UserDefaults.standard.object(forKey: "sg_ghostModeHideReadReceipts") {
+        return (val as? Bool) ?? true
+    }
+    return true
+}
+
 public enum CallListViewType {
     case all
     case missed
@@ -954,6 +962,9 @@ public final class AccountViewTracker {
                     
                     if let account = self.account {
                         let signal = (account.postbox.transaction { transaction -> Signal<Void, NoError> in
+                            if isGhostModeHideReadReceipts() {
+                                return .complete()
+                            }
                             if let peer = transaction.getPeer(peerId), let inputPeer = apiInputPeer(peer) {
                                 let request: Signal<Bool, MTRpcError>
                                 switch inputPeer {

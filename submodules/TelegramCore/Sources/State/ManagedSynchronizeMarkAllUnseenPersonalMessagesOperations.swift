@@ -4,6 +4,14 @@ import Postbox
 import SwiftSignalKit
 import MtProtoKit
 
+private func isGhostModeHideReadReceipts() -> Bool {
+    guard UserDefaults.standard.bool(forKey: "sg_ghostModeEnabled") else { return false }
+    if let val = UserDefaults.standard.object(forKey: "sg_ghostModeHideReadReceipts") {
+        return (val as? Bool) ?? true
+    }
+    return true
+}
+
 private final class ManagedSynchronizeMarkAllUnseenPersonalMessagesOperationsHelper {
     var operationDisposables: [Int32: Disposable] = [:]
     
@@ -143,6 +151,13 @@ private func synchronizeMarkAllUnseen(transaction: Transaction, postbox: Postbox
             let filteredIds = ids.filter { $0.id <= operation.maxId }
             if filteredIds.isEmpty {
                 return .single(ids.min()?.id)
+            }
+            if isGhostModeHideReadReceipts() {
+                if ids.count < limit {
+                    return .single(nil)
+                } else {
+                    return .single(ids.min()?.id)
+                }
             }
             if peerId.namespace == Namespaces.Peer.CloudChannel {
                 guard let inputChannel = inputChannel else {

@@ -641,9 +641,15 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             |> runOn(Queue.mainQueue())
         }, autolockDeadine: autolockDeadine, encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: nil, useBetaFeatures: !buildConfig.isAppStoreBuild, isICloudEnabled: buildConfig.isICloudEnabled)
         
-        guard let appGroupUrl = maybeAppGroupUrl else {
-            self.mainWindow?.presentNative(UIAlertController(title: nil, message: "Error 2", preferredStyle: .alert))
-            return true
+        let appGroupUrl: URL
+        if let groupUrl = maybeAppGroupUrl {
+            appGroupUrl = groupUrl
+        } else {
+            // Fallback for sideloaded builds without app group entitlements.
+            // Free Apple accounts don't support App Groups, so containerURL()
+            // returns nil. Use the app's own Documents directory instead.
+            let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
+            appGroupUrl = URL(fileURLWithPath: documentsPath)
         }
         
         var isDebugConfiguration = false
