@@ -3,6 +3,7 @@ load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 sgdeps = [
     "//Swiftgram/SwiftSoup:SwiftSoup",
     "//Swiftgram/SGSimpleSettings:SGSimpleSettings",
+    "//Swiftgram/SGDeletedMessagesStore:SGDeletedMessagesStore",
     "//Swiftgram/SGTranslationLangFix:SGTranslationLangFix",
     "//Swiftgram/SGWebSettingsScheme:SGWebSettingsScheme",
     "//Swiftgram/SGGHSettingsScheme:SGGHSettingsScheme",

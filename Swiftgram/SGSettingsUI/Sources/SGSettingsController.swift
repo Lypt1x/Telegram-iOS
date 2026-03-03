@@ -43,6 +43,7 @@ private enum SGControllerSection: Int32, SGItemListSection {
     case contextMenu
     case accountColors
     case ghostMode
+    case deletedMessages
     case other
 }
 
@@ -113,6 +114,9 @@ private enum SGBoolSetting: String {
     case ghostModeHideReadReceipts
     case ghostModeHideTypingIndicator
     case ghostModeHideStoryViews
+    // Deleted Messages
+    case deletedMessagesHistoryEnabled
+    case deletedMessagesShowIndicator
 }
 
 private enum SGOneFromManySetting: String {
@@ -134,6 +138,7 @@ private enum SGSliderSetting: String {
 private enum SGDisclosureLink: String {
     case contentSettings
     case languageSettings
+    case deletedMessages
 }
 
 private struct PeerNameColorScreenState: Equatable {
@@ -319,6 +324,13 @@ private func SGControllerEntries(presentationData: PresentationData, callListSet
     entries.append(.toggle(id: id.count, section: .ghostMode, settingName: .ghostModeHideReadReceipts, value: SGSimpleSettings.shared.ghostModeHideReadReceipts, text: "Hide Read Receipts", enabled: SGSimpleSettings.shared.ghostModeEnabled))
     entries.append(.toggle(id: id.count, section: .ghostMode, settingName: .ghostModeHideTypingIndicator, value: SGSimpleSettings.shared.ghostModeHideTypingIndicator, text: "Hide Typing Indicator", enabled: SGSimpleSettings.shared.ghostModeEnabled))
     entries.append(.toggle(id: id.count, section: .ghostMode, settingName: .ghostModeHideStoryViews, value: SGSimpleSettings.shared.ghostModeHideStoryViews, text: "Hide Story Views", enabled: SGSimpleSettings.shared.ghostModeEnabled))
+    
+    // MARK: Deleted Messages
+    entries.append(.header(id: id.count, section: .deletedMessages, text: "DELETED MESSAGES", badge: nil))
+    entries.append(.toggle(id: id.count, section: .deletedMessages, settingName: .deletedMessagesHistoryEnabled, value: SGSimpleSettings.shared.deletedMessagesHistoryEnabled, text: "Save Deleted Messages", enabled: true))
+    entries.append(.toggle(id: id.count, section: .deletedMessages, settingName: .deletedMessagesShowIndicator, value: SGSimpleSettings.shared.deletedMessagesShowIndicator, text: "Show Delete Indicator", enabled: SGSimpleSettings.shared.deletedMessagesHistoryEnabled))
+    entries.append(.notice(id: id.count, section: .deletedMessages, text: "When enabled, messages deleted by others will be saved locally and marked with an indicator."))
+    entries.append(.disclosure(id: id.count, section: .deletedMessages, link: .deletedMessages, text: "📋 View Deleted Messages"))
     
     id.increment(10000)
     entries.append(.header(id: id.count, section: .other, text: strings.Appearance_Other.uppercased(), badge: nil))
@@ -551,6 +563,11 @@ public func sgSettingsController(context: AccountContext/*, focusOnItemTag: Int?
             SGSimpleSettings.shared.ghostModeHideTypingIndicator = value
         case .ghostModeHideStoryViews:
             SGSimpleSettings.shared.ghostModeHideStoryViews = value
+        case .deletedMessagesHistoryEnabled:
+            SGSimpleSettings.shared.deletedMessagesHistoryEnabled = value
+            simplePromise.set(true)
+        case .deletedMessagesShowIndicator:
+            SGSimpleSettings.shared.deletedMessagesShowIndicator = value
         }
     }, updateSliderValue: { setting, value in
         switch (setting) {
@@ -721,6 +738,8 @@ public func sgSettingsController(context: AccountContext/*, focusOnItemTag: Int?
                     }
                     strongContext.sharedContext.applicationBindings.openUrl(url)
                 })
+            case .deletedMessages:
+                pushControllerImpl?(SGDeletedMessagesController(context: context))
         }
     }, searchInput: { searchQuery in
         updateState { state in

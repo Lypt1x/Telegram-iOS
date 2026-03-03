@@ -2,6 +2,8 @@ import Foundation
 import Postbox
 import SwiftSignalKit
 import TelegramApi
+import SGSimpleSettings
+import SGDeletedMessagesStore
 
 func addMessageMediaResourceIdsToRemove(media: Media, resourceIds: inout [MediaResourceId]) {
     if let image = media as? TelegramMediaImage {
@@ -52,6 +54,33 @@ public func _internal_deleteMessages(transaction: Transaction, mediaBox: MediaBo
             }
         }
     }
+    // MARK: Swiftgram - Save deleted messages before removal
+    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+        let now = Int32(Date().timeIntervalSince1970)
+        for id in ids {
+            if let message = transaction.getMessage(id) {
+                let isOutgoing = !message.flags.contains(.Incoming)
+                let authorId = message.author?.id.toInt64() ?? 0
+                let chatTitle: String
+                if let peer = transaction.getPeer(id.peerId) {
+                    chatTitle = peer.debugDisplayTitle
+                } else {
+                    chatTitle = ""
+                }
+                DeletedMessagesStore.shared.saveDeletedMessage(
+                    messageId: id.id,
+                    peerId: id.peerId.toInt64(),
+                    authorId: authorId,
+                    text: message.text,
+                    date: message.timestamp,
+                    deletedDate: now,
+                    isOutgoing: isOutgoing,
+                    chatTitle: chatTitle
+                )
+            }
+        }
+    }
+
     transaction.deleteMessages(ids, forEachMedia: { _ in
     })
 }

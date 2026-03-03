@@ -173,6 +173,10 @@ public class SGSimpleSettings {
         case ghostModeHideReadReceipts = "sg_ghostModeHideReadReceipts"
         case ghostModeHideTypingIndicator = "sg_ghostModeHideTypingIndicator"
         case ghostModeHideStoryViews = "sg_ghostModeHideStoryViews"
+        
+        // Deleted Messages
+        case deletedMessagesHistoryEnabled = "sg_deletedMessagesHistoryEnabled"
+        case deletedMessagesShowIndicator = "sg_deletedMessagesShowIndicator"
         case translationBackend
         case customAppBadge
         case canUseNY
@@ -333,6 +337,10 @@ public class SGSimpleSettings {
         Keys.ghostModeHideReadReceipts.rawValue: true,
         Keys.ghostModeHideTypingIndicator.rawValue: true,
         Keys.ghostModeHideStoryViews.rawValue: true,
+        
+        // Deleted Messages defaults
+        Keys.deletedMessagesHistoryEnabled.rawValue: false,
+        Keys.deletedMessagesShowIndicator.rawValue: true,
         Keys.translationBackend.rawValue: TranslationBackend.default.rawValue,
         Keys.customAppBadge.rawValue: "",
         Keys.canUseNY.rawValue: false,
@@ -610,6 +618,13 @@ public class SGSimpleSettings {
 
     @UserDefault(key: Keys.ghostModeHideStoryViews.rawValue)
     public var ghostModeHideStoryViews: Bool
+    
+    // MARK: - Deleted Messages
+    @UserDefault(key: Keys.deletedMessagesHistoryEnabled.rawValue)
+    public var deletedMessagesHistoryEnabled: Bool
+    
+    @UserDefault(key: Keys.deletedMessagesShowIndicator.rawValue)
+    public var deletedMessagesShowIndicator: Bool
 
     @UserDefault(key: Keys.canUseNY.rawValue)
     public var canUseNY: Bool

@@ -13,6 +13,7 @@ import ItemListPeerItem
 import DeviceAccess
 import TelegramStringFormatting
 import PeerNameColorItem
+import SGSimpleSettings
 
 enum SettingsSection: Int, CaseIterable {
     case edit
@@ -103,6 +104,25 @@ func settingsItems(showProfileId: Bool, data: PeerInfoScreenData?, context: Acco
             )
         )
     }
+    
+    // Ghost Mode toggle
+    items[.edit]!.append(PeerInfoScreenSwitchItem(
+        id: 101,
+        text: "👻 Ghost Mode",
+        value: SGSimpleSettings.shared.ghostModeEnabled,
+        icon: nil,
+        isLocked: false,
+        toggled: { value in
+            SGSimpleSettings.shared.ghostModeEnabled = value
+            if value {
+                SGSimpleSettings.shared.ghostModeHideOnlineStatus = true
+                SGSimpleSettings.shared.ghostModeHideReadReceipts = true
+                SGSimpleSettings.shared.ghostModeHideTypingIndicator = true
+                SGSimpleSettings.shared.ghostModeHideStoryViews = true
+            }
+            NotificationCenter.default.post(name: Notification.Name("SGGhostModeStateChanged"), object: nil)
+        }
+    ))
     
     if let settings = data.globalSettings {
         if settings.premiumGracePeriod {
