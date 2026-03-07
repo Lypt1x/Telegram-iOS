@@ -189,6 +189,9 @@ workflows:
           print('apps.json updated:', app['version'], app['downloadURL'])
           PYEOF
 
+          # Configure git to use gh CLI for authentication (inherits GH_TOKEN)
+          gh auth setup-git
+
           # Commit and push updated apps.json
           git config user.email "codemagic-bot@users.noreply.github.com"
           git config user.name "Codemagic Bot"
