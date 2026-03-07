@@ -27,7 +27,7 @@ jobs:
       - name: Restore Bazel cache
         uses: actions/cache@v4
         with:
-          path: /private/var/tmp/_bazel_cache
+          path: /private/var/tmp/_bazel_containerhost
           key: bazel-${{ runner.os }}-${{ hashFiles('**/BUILD', '**/WORKSPACE', 'versions.json') }}
           restore-keys: |
             bazel-${{ runner.os }}-
