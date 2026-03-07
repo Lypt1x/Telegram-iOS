@@ -1,0 +1,22 @@
+{
+  "name": "Swiftgram",
+  "identifier": "com.lypt1x.swiftgram-source",
+  "sourceURL": "https://lypt1x.github.io/Telegram-iOS/apps.json",
+  "apps": [
+    {
+      "name": "Swiftgram",
+      "bundleIdentifier": "ph.telegra.Telegraph",
+      "developerName": "Lypt1x",
+      "subtitle": "Telegram with extra features",
+      "localizedDescription": "A modified Telegram iOS client with additional features and customizations.",
+      "iconURL": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4e/5c/46/4e5c4601-f9db-91eb-6e17-519ef3c9cbb0/Icon-Production-0-0-1x_U007emarketing-0-7-0-85-220.png/512x512bb.jpg",
+      "version": "12.5",
+      "versionDate": "2026-03-07",
+      "versionDescription": "Latest build from Codemagic CI",
+      "downloadURL": "https://github.com/Lypt1x/Telegram-iOS/releases/latest/download/Swiftgram.ipa",
+      "size": 0,
+      "screenshotURLs": []
+    }
+  ],
+  "news": []
+}

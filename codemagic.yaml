@@ -121,6 +121,55 @@ workflows:
           rm -rf ipa_tmp Swiftgram-raw.ipa
           ls -la Swiftgram.ipa
 
+      - name: Publish GitHub Release and update SideStore source
+        script: |
+          set -x
+          cd /Users/Shared/telegram-ios
+
+          APP_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["app"]);')
+          BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          BUILD_NUMBER="$(($COMMIT_COUNT+$BUILD_NUMBER_OFFSET))"
+          TAG="v${APP_VERSION}-${BUILD_NUMBER}"
+          IPA_PATH="build/artifacts/Swiftgram.ipa"
+          IPA_SIZE=$(stat -f%z "$IPA_PATH")
+          TODAY=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Create or update GitHub release and upload IPA
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" "$IPA_PATH" \
+            --repo Lypt1x/Telegram-iOS \
+            --title "Swiftgram $APP_VERSION ($BUILD_NUMBER)" \
+            --notes "Automated build from Codemagic CI\nCommit: $CM_COMMIT\nBuild: $BUILD_NUMBER" \
+            --latest
+
+          # Update docs/apps.json with new version, date, size
+          python3 << PYEOF
+          import json, os
+
+          with open('docs/apps.json', 'r') as f:
+              source = json.load(f)
+
+          app = source['apps'][0]
+          app['version'] = os.environ.get('APP_VERSION', app['version'])
+          app['versionDate'] = '$TODAY'
+          app['versionDescription'] = 'Build $BUILD_NUMBER — commit $CM_COMMIT'
+          app['downloadURL'] = 'https://github.com/Lypt1x/Telegram-iOS/releases/download/$TAG/Swiftgram.ipa'
+          app['size'] = $IPA_SIZE
+
+          with open('docs/apps.json', 'w') as f:
+              json.dump(source, f, indent=2)
+
+          print('apps.json updated:', app['version'], app['downloadURL'])
+          PYEOF
+
+          # Commit and push updated apps.json
+          git config user.email "codemagic-bot@users.noreply.github.com"
+          git config user.name "Codemagic Bot"
+          git add docs/apps.json
+          git diff --cached --quiet || git commit -m "chore: update SideStore source for $TAG [skip ci]"
+          git push origin HEAD
+
     artifacts:
       - /Users/Shared/telegram-ios/build/artifacts/Swiftgram.ipa
 
