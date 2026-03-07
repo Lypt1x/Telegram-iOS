@@ -111,13 +111,13 @@ func _internal_handleRemoteDeletedMessages(transaction: Transaction, mediaBox: M
         _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: ids, manualAddMessageThreadStatsDifference: manualAddMessageThreadStatsDifference)
         return RemoteDeleteMessagesResult(isPreserved: false, displayAlerts: [])
     }
-    
+
     let now = Int32(Date().timeIntervalSince1970)
     var seenIds = Set<MessageId>()
     var groupedCounts: [PeerId: Int] = [:]
     var groupedTitles: [PeerId: String] = [:]
     var orderedPeerIds: [PeerId] = []
-    
+
     for id in ids {
         if !seenIds.insert(id).inserted {
             continue
@@ -128,7 +128,7 @@ func _internal_handleRemoteDeletedMessages(transaction: Transaction, mediaBox: M
         if message.attributes.contains(where: { $0 is DeletedMessageAttribute }) {
             continue
         }
-        
+
         transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
             var updatedAttributes = message.attributes
             if updatedAttributes.contains(where: { $0 is DeletedMessageAttribute }) {
@@ -137,7 +137,7 @@ func _internal_handleRemoteDeletedMessages(transaction: Transaction, mediaBox: M
             updatedAttributes.append(DeletedMessageAttribute(date: now))
             return .update(storeMessage(message, with: updatedAttributes))
         }
-        
+
         let chatTitle = transaction.getPeer(id.peerId)?.debugDisplayTitle ?? ""
         if groupedCounts[id.peerId] == nil {
             groupedCounts[id.peerId] = 0
@@ -145,10 +145,10 @@ func _internal_handleRemoteDeletedMessages(transaction: Transaction, mediaBox: M
             orderedPeerIds.append(id.peerId)
         }
         groupedCounts[id.peerId, default: 0] += 1
-        
+
         saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
     }
-    
+
     return RemoteDeleteMessagesResult(
         isPreserved: true,
         displayAlerts: orderedPeerIds.compactMap { peerId -> String? in
@@ -285,7 +285,7 @@ func _internal_setChatMessageAutoremoveTimeoutInteractively(account: Account, pe
         |> mapToSignal { result -> Signal<Never, SetChatMessageAutoremoveTimeoutError> in
             if let result = result {
                 account.stateManager.addUpdates(result)
-                
+
                 return account.postbox.transaction { transaction -> Void in
                     transaction.updatePeerCachedData(peerIds: [peerId], update: { _, current in
                         let updatedTimeout: CachedPeerAutoremoveTimeout
@@ -294,7 +294,7 @@ func _internal_setChatMessageAutoremoveTimeoutInteractively(account: Account, pe
                         } else {
                             updatedTimeout = .known(nil)
                         }
-                        
+
                         if peerId.namespace == Namespaces.Peer.CloudUser {
                             let current = (current as? CachedUserData) ?? CachedUserData()
                             return current.withUpdatedAutoremoveTimeout(updatedTimeout)
