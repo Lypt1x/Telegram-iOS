@@ -143,6 +143,10 @@ public extension TelegramEngine {
             return _internal_deleteMessages(transaction: transaction, mediaBox: self.account.postbox.mediaBox, ids: ids, deleteMedia: true, manualAddMessageThreadStatsDifference: nil)
         }
 
+        public func removeMessagesFromHistory(transaction: Transaction, ids: [MessageId]) {
+            return _internal_removeMessagesFromHistory(transaction: transaction, mediaBox: self.account.postbox.mediaBox, ids: ids, deleteMedia: true, manualAddMessageThreadStatsDifference: nil)
+        }
+
         public func deleteAllMessagesWithAuthor(peerId: PeerId, authorId: PeerId, namespace: MessageId.Namespace) -> Signal<Never, NoError> {
             return self.account.postbox.transaction { transaction -> Void in
                 _internal_deleteAllMessagesWithAuthor(transaction: transaction, mediaBox: self.account.postbox.mediaBox, peerId: peerId, authorId: authorId, namespace: namespace)
@@ -171,6 +175,12 @@ public extension TelegramEngine {
             })
             
             return _internal_deleteMessagesInteractively(account: self.account, messageIds: messageIds, type: type, deleteAllInGroup: deleteAllInGroup)
+        }
+
+        public func removeMessagesFromHistoryInteractively(messageIds: [MessageId]) -> Signal<Void, NoError> {
+            return self.account.postbox.transaction { transaction -> Void in
+                _internal_removeMessagesFromHistory(transaction: transaction, mediaBox: self.account.postbox.mediaBox, ids: messageIds, deleteMedia: true, manualAddMessageThreadStatsDifference: nil)
+            }
         }
 
         public func clearHistoryInteractively(peerId: PeerId, threadId: Int64?, type: InteractiveHistoryClearingType) -> Signal<Void, NoError> {

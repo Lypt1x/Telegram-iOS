@@ -1,4 +1,5 @@
 import Foundation
+import SGSimpleSettings
 import TelegramPresentationData
 import AccountContext
 import Postbox
@@ -347,8 +348,24 @@ extension ChatControllerImpl {
         }))
     }
         
-    func beginDeleteMessagesWithUndo(messageIds: Set<MessageId>, type: InteractiveMessagesDeletionType) {
-        var deleteImmediately = false
+    func beginDeleteMessagesWithUndo(messageIds: Set<MessageId>, type: InteractiveMessagesDeletionType, removeFromHistory: Bool = false) {
+        let commit: () -> Void = { [weak self] in
+            guard let self else {
+                return
+            }
+            if removeFromHistory {
+                let _ = self.context.engine.messages.removeMessagesFromHistoryInteractively(messageIds: Array(messageIds)).startStandalone()
+            } else if SGSimpleSettings.shared.deletedMessagesHistoryEnabled, case .forLocalPeer = type {
+                let _ = (self.context.engine.messages.deleteMessagesInteractively(messageIds: Array(messageIds), type: type)
+                |> deliverOnMainQueue).startStandalone(completed: { [weak self] in
+                    self?.chatDisplayNode.historyNode.ignoreMessageIds = Set()
+                })
+            } else {
+                let _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: Array(messageIds), type: type).startStandalone()
+            }
+        }
+
+        var deleteImmediately = removeFromHistory
         if case .forEveryone = type {
             deleteImmediately = true
         } else if case .scheduledMessages = self.presentationInterfaceState.subject {
@@ -356,9 +373,9 @@ extension ChatControllerImpl {
         } else if case .peer(self.context.account.peerId) = self.chatLocation {
             deleteImmediately = true
         }
-        
+
         if deleteImmediately {
-            let _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: Array(messageIds), type: type).startStandalone()
+            commit()
             return
         }
         
@@ -370,7 +387,7 @@ extension ChatControllerImpl {
                 return false
             }
             if value == .commit {
-                let _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: Array(messageIds), type: type).startStandalone()
+                commit()
                 return true
             } else if value == .undo {
                 self.chatDisplayNode.historyNode.ignoreMessageIds = Set()
@@ -387,6 +404,11 @@ extension ChatControllerImpl {
         |> deliverOnMainQueue).start(next: { [weak self] messages in
             guard let self else {
                 return
+            }
+
+            let loadedMessages = messages.values.compactMap { $0 }
+            let removeDeletedMessagesFromHistory = !loadedMessages.isEmpty && loadedMessages.count == messages.count && loadedMessages.allSatisfy { message in
+                message.attributes.contains(where: { $0 is DeletedMessageAttribute })
             }
             
             if let message = messages.values.compactMap({ $0 }).first(where: { message in message.attributes.contains(where: { $0 is PublishedSuggestedPostMessageAttribute }) }), let attribute = message.attributes.first(where: { $0 is PublishedSuggestedPostMessageAttribute }) as? PublishedSuggestedPostMessageAttribute, message.timestamp > Int32(Date().timeIntervalSince1970) - 60 * 60 * 24 {
@@ -523,7 +545,7 @@ extension ChatControllerImpl {
                 items.append(ActionSheetSwitchItem(title: self.presentationData.strings.Chat_UnsendMyMessages, isOn: false, action: { value in
                     unsendPersonalMessages = value
                 }))
-            } else if options.contains(.deleteGlobally) {
+            } else if options.contains(.deleteGlobally) && !removeDeletedMessagesFromHistory {
                 let globalTitle: String
                 if isChannel {
                     globalTitle = self.presentationData.strings.Conversation_DeleteMessagesForEveryone
@@ -587,8 +609,8 @@ extension ChatControllerImpl {
                 }))
             }
             if options.contains(.deleteLocally) {
-                var localOptionText = self.presentationData.strings.Conversation_DeleteMessagesForMe
-                if self.chatLocation.peerId == self.context.account.peerId {
+                var localOptionText = "Remove from history"
+                if !removeDeletedMessagesFromHistory, self.chatLocation.peerId == self.context.account.peerId {
                     if case .scheduledMessages = self.presentationInterfaceState.subject {
                         localOptionText = messageIds.count > 1 ? self.presentationData.strings.ScheduledMessages_Reminder_DeleteMany : self.presentationData.strings.ScheduledMessages_Reminder_Delete
                     } else if case .peer(self.context.account.peerId) = self.chatLocation, messages.values.allSatisfy({ message in message?._asMessage().effectivelyIncoming(self.context.account.peerId) ?? false }) {
@@ -596,9 +618,9 @@ extension ChatControllerImpl {
                     } else {
                         localOptionText = self.presentationData.strings.Chat_ConfirmationDeleteFromSavedMessages
                     }
-                } else if case .scheduledMessages = self.presentationInterfaceState.subject {
+                } else if !removeDeletedMessagesFromHistory, case .scheduledMessages = self.presentationInterfaceState.subject {
                     localOptionText = messageIds.count > 1 ? self.presentationData.strings.ScheduledMessages_DeleteMany : self.presentationData.strings.ScheduledMessages_Delete
-                } else {
+                } else if !removeDeletedMessagesFromHistory {
                     if options.contains(.unsendPersonal) {
                         localOptionText = self.presentationData.strings.Chat_DeleteMessagesConfirmation(Int32(messageIds.count))
                     } else if case .peer(self.context.account.peerId) = self.chatLocation {
@@ -617,7 +639,7 @@ extension ChatControllerImpl {
                             guard let strongSelf = self else {
                                 return
                             }
-                            strongSelf.beginDeleteMessagesWithUndo(messageIds: messageIds, type: unsendPersonalMessages ? .forEveryone : .forLocalPeer)
+                            strongSelf.beginDeleteMessagesWithUndo(messageIds: messageIds, type: unsendPersonalMessages ? .forEveryone : .forLocalPeer, removeFromHistory: removeDeletedMessagesFromHistory)
                         }
                         
                         if "".isEmpty {
@@ -637,7 +659,7 @@ extension ChatControllerImpl {
                     if let strongSelf = self {
                         strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, { $0.updatedInterfaceState { $0.withoutSelectionState() } })
                         
-                        strongSelf.beginDeleteMessagesWithUndo(messageIds: messageIds, type: unsendPersonalMessages ? .forEveryone : .forLocalPeer)
+                        strongSelf.beginDeleteMessagesWithUndo(messageIds: messageIds, type: unsendPersonalMessages ? .forEveryone : .forLocalPeer, removeFromHistory: removeDeletedMessagesFromHistory)
                     }
                 }))
             }

@@ -181,6 +181,31 @@ public final class DeletedMessagesStore {
         }
     }
 
+    public func removeDeletedMessages(_ ids: [(messageId: Int32, peerId: Int64)]) {
+        self.queue.async { [weak self] in
+            guard let self = self, let db = self.db, !ids.isEmpty else { return }
+
+            let sql = "DELETE FROM deleted_messages WHERE messageId = ? AND peerId = ?"
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                SGLogger.shared.log("DeletedMessagesStore", "Failed to prepare delete statement")
+                return
+            }
+            defer { sqlite3_finalize(stmt) }
+
+            for id in ids {
+                sqlite3_reset(stmt)
+                sqlite3_clear_bindings(stmt)
+                sqlite3_bind_int(stmt, 1, id.messageId)
+                sqlite3_bind_int64(stmt, 2, id.peerId)
+
+                if sqlite3_step(stmt) != SQLITE_DONE {
+                    SGLogger.shared.log("DeletedMessagesStore", "Failed to delete stored deleted message \(id.messageId)")
+                }
+            }
+        }
+    }
+
     public func clearAll() {
         self.queue.async { [weak self] in
             guard let self = self, let db = self.db else { return }

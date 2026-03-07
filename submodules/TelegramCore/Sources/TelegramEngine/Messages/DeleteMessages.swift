@@ -72,20 +72,7 @@ private func saveDeletedMessage(transaction: Transaction, message: Message, id: 
     )
 }
 
-public func _internal_deleteMessages(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId], deleteMedia: Bool = true, manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil) {
-    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
-        let now = Int32(Date().timeIntervalSince1970)
-        for id in ids {
-            guard let message = transaction.getMessage(id) else { continue }
-            if message.attributes.contains(where: { $0 is DeletedMessageAttribute }) { continue }
-            let updatedAttributes = message.attributes + [DeletedMessageAttribute(date: now)]
-            transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
-                return .update(storeMessage(message, with: updatedAttributes))
-            }
-            saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
-        }
-        return
-    }
+private func deleteMessagesFromDatabase(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId], deleteMedia: Bool = true, manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil) {
     var resourceIds: [MediaResourceId] = []
     if deleteMedia {
         for id in ids {
@@ -117,6 +104,28 @@ public func _internal_deleteMessages(transaction: Transaction, mediaBox: MediaBo
     }
     transaction.deleteMessages(ids, forEachMedia: { _ in
     })
+}
+
+public func _internal_deleteMessages(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId], deleteMedia: Bool = true, manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil) {
+    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+        let now = Int32(Date().timeIntervalSince1970)
+        for id in ids {
+            guard let message = transaction.getMessage(id) else { continue }
+            if message.attributes.contains(where: { $0 is DeletedMessageAttribute }) { continue }
+            let updatedAttributes = message.attributes + [DeletedMessageAttribute(date: now)]
+            transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
+                return .update(storeMessage(message, with: updatedAttributes))
+            }
+            saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
+        }
+        return
+    }
+    deleteMessagesFromDatabase(transaction: transaction, mediaBox: mediaBox, ids: ids, deleteMedia: deleteMedia, manualAddMessageThreadStatsDifference: manualAddMessageThreadStatsDifference)
+}
+
+public func _internal_removeMessagesFromHistory(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId], deleteMedia: Bool = true, manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil) {
+    deleteMessagesFromDatabase(transaction: transaction, mediaBox: mediaBox, ids: ids, deleteMedia: deleteMedia, manualAddMessageThreadStatsDifference: manualAddMessageThreadStatsDifference)
+    DeletedMessagesStore.shared.removeDeletedMessages(ids.map { (messageId: $0.id, peerId: $0.peerId.toInt64()) })
 }
 
 func _internal_handleRemoteDeletedMessages(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId], manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil) -> RemoteDeleteMessagesResult {
