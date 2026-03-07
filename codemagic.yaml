@@ -37,6 +37,15 @@ workflows:
           brew install ccache || true
           echo "ccache at: $(which ccache)"
 
+          # Configure ccache for persistent caching across CI builds
+          export CCACHE_DIR="/Users/Shared/ccache"
+          mkdir -p "$CCACHE_DIR"
+          ccache --set-config=cache_dir="$CCACHE_DIR"
+          ccache --set-config=max_size=2G
+          ccache --set-config=compression=true
+          ccache -z  # Reset stats for this build
+          echo "ccache configured: dir=$CCACHE_DIR"
+
       - name: Create canonical source directory
         script: |
           set -x
@@ -81,7 +90,12 @@ workflows:
           set -x
           SOURCE_DIR=/Users/Shared/telegram-ios
           BAZEL_USER_ROOT="/private/var/tmp/_bazel_containerhost"
+          BAZEL_CACHE_DIR="/Users/Shared/bazel-cache"
+          mkdir -p "$BAZEL_CACHE_DIR"
           cd $SOURCE_DIR
+
+          # Export ccache dir so build subprocesses inherit it
+          export CCACHE_DIR="/Users/Shared/ccache"
 
           BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
           export APP_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["app"]);')
@@ -92,11 +106,23 @@ workflows:
           python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
+            --cacheDir="$BAZEL_CACHE_DIR" \
             build \
             --configurationPath="build-system/appstore-configuration.json" \
             --codesigningInformationPath=build-system/fake-codesigning \
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
+
+      - name: Cache diagnostics
+        script: |
+          echo "=== Bazel cache ==="
+          du -sh /private/var/tmp/_bazel_containerhost 2>/dev/null || echo "No Bazel user root"
+          du -sh /Users/Shared/bazel-cache 2>/dev/null || echo "No Bazel disk cache"
+          echo "=== ccache stats ==="
+          export CCACHE_DIR="/Users/Shared/ccache"
+          ccache -s 2>/dev/null || echo "ccache not available"
+          echo "=== Homebrew cache ==="
+          du -sh "$HOME/Library/Caches/Homebrew" 2>/dev/null || echo "No Homebrew cache"
 
       - name: Collect and strip IPA
         script: |
@@ -176,3 +202,6 @@ workflows:
     cache:
       cache_paths:
         - /private/var/tmp/_bazel_containerhost
+        - /Users/Shared/bazel-cache
+        - /Users/Shared/ccache
+        - $HOME/Library/Caches/Homebrew
