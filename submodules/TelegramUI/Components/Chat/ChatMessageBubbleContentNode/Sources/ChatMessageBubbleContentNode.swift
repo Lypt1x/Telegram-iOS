@@ -191,8 +191,9 @@ public final class ChatMessageBubbleContentItem {
     public let attributes: ChatMessageEntryAttributes
     public let isItemPinned: Bool
     public let isItemEdited: Bool
+    public let isItemDeleted: Bool
     
-    public init(context: AccountContext, controllerInteraction: ChatControllerInteraction, message: Message, topMessage: Message, content: ChatMessageItemContent, read: Bool, chatLocation: ChatLocation, presentationData: ChatPresentationData, associatedData: ChatMessageItemAssociatedData, attributes: ChatMessageEntryAttributes, isItemPinned: Bool, isItemEdited: Bool) {
+    public init(context: AccountContext, controllerInteraction: ChatControllerInteraction, message: Message, topMessage: Message, content: ChatMessageItemContent, read: Bool, chatLocation: ChatLocation, presentationData: ChatPresentationData, associatedData: ChatMessageItemAssociatedData, attributes: ChatMessageEntryAttributes, isItemPinned: Bool, isItemEdited: Bool, isItemDeleted: Bool = false) {
         self.context = context
         self.controllerInteraction = controllerInteraction
         self.message = message
@@ -205,6 +206,7 @@ public final class ChatMessageBubbleContentItem {
         self.attributes = attributes
         self.isItemPinned = isItemPinned
         self.isItemEdited = isItemEdited
+        self.isItemDeleted = isItemDeleted
     }
 }
 

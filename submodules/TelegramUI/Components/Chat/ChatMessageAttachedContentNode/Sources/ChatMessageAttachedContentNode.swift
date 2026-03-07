@@ -465,6 +465,7 @@ public final class ChatMessageAttachedContentNode: ASDisplayNode {
                     attributes: attributes,
                     isPinned: message.tags.contains(.pinned) && !associatedData.isInPinnedListMode && !isReplyThread,
                     forcedIsEdited: false,
+                    forcedIsDeleted: false,
                     file: contentFileValue,
                     automaticDownload: automaticDownload,
                     incoming: incoming,
@@ -688,6 +689,7 @@ public final class ChatMessageAttachedContentNode: ASDisplayNode {
                 if attributes.updatingMedia != nil {
                     edited = true
                 }
+                let deleted = messageHasDeletedAttribute(message)
                 var viewCount: Int?
                 var dateReplies = 0
                 var starsCount: Int64?
@@ -749,6 +751,7 @@ public final class ChatMessageAttachedContentNode: ASDisplayNode {
                                 context: context,
                                 presentationData: presentationData,
                                 edited: edited && !isPreview,
+                                deleted: deleted,
                                 impressionCount: !isPreview ? viewCount : nil,
                                 dateText: dateText,
                                 type: statusType,

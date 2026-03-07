@@ -62,6 +62,7 @@ private func parsedServiceAction(_ operation: SecretChatIncomingDecryptedOperati
 
 struct SecretChatOperationProcessResult {
     let addedMessages: [StoreMessage]
+    let displayAlerts: [String]
 }
 
 func processSecretChatIncomingDecryptedOperations(encryptionProvider: EncryptionProvider, mediaBox: MediaBox, transaction: Transaction, peerId: PeerId) -> SecretChatOperationProcessResult {
@@ -72,6 +73,7 @@ func processSecretChatIncomingDecryptedOperations(encryptionProvider: Encryption
         var maxAcknowledgedCanonicalOperationIndex: Int32?
         var updatedPeer = peer
         var addedMessages: [StoreMessage] = []
+        var displayAlerts: [String] = []
         
         transaction.operationLogEnumerateEntries(peerId: peerId, tag: OperationLogTags.SecretIncomingDecrypted, { entry in
             if let operation = entry.contents as? SecretChatIncomingDecryptedOperation, let serviceAction = parsedServiceAction(operation), case let .resendOperations(fromSeq, toSeq) = serviceAction {
@@ -295,7 +297,8 @@ func processSecretChatIncomingDecryptedOperations(encryptionProvider: Encryption
                                                 }
                                             }
                                         }
-                                        _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: filteredMessageIds)
+                                        let result = _internal_handleRemoteDeletedMessages(transaction: transaction, mediaBox: mediaBox, ids: filteredMessageIds)
+                                        displayAlerts.append(contentsOf: result.displayAlerts)
                                     }
                                 case .clearHistory:
                                     _internal_clearHistory(transaction: transaction, mediaBox: mediaBox, peerId: peerId, threadId: nil, namespaces: .all)
@@ -388,10 +391,10 @@ func processSecretChatIncomingDecryptedOperations(encryptionProvider: Encryption
                 return updated
             })
         }
-        return SecretChatOperationProcessResult(addedMessages: addedMessages)
+        return SecretChatOperationProcessResult(addedMessages: addedMessages, displayAlerts: displayAlerts)
     } else {
         assertionFailure()
-        return SecretChatOperationProcessResult(addedMessages: [])
+        return SecretChatOperationProcessResult(addedMessages: [], displayAlerts: [])
     }
 }
 

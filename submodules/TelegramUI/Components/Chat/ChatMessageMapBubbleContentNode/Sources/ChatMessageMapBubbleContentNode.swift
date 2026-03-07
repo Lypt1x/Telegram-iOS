@@ -190,6 +190,7 @@ public class ChatMessageMapBubbleContentNode: ChatMessageBubbleContentNode {
                 if item.attributes.updatingMedia != nil {
                     edited = true
                 }
+                let deleted = messageHasDeletedAttribute(item.message)
                 var viewCount: Int?
                 var dateReplies = 0
                 var starsCount: Int64?
@@ -274,6 +275,7 @@ public class ChatMessageMapBubbleContentNode: ChatMessageBubbleContentNode {
                         context: item.context,
                         presentationData: item.presentationData,
                         edited: edited,
+                        deleted: deleted,
                         impressionCount: !item.presentationData.isPreview ? viewCount : nil,
                         dateText: dateText,
                         type: statusType,

@@ -226,6 +226,15 @@ public func transcribedText(message: Message) -> TranscribedText? {
     return nil
 }
 
+public func messageHasDeletedAttribute(_ message: Message) -> Bool {
+    for attribute in message.attributes {
+        if attribute is DeletedMessageAttribute {
+            return true
+        }
+    }
+    return false
+}
+
 public func isPollEffectivelyClosed(message: Message, poll: TelegramMediaPoll) -> Bool {
     if poll.isClosed {
         return true

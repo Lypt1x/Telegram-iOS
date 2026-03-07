@@ -53,6 +53,7 @@ public class ChatMessageRestrictedBubbleContentNode: ChatMessageBubbleContentNod
                 if item.attributes.updatingMedia != nil {
                     edited = true
                 }
+                let deleted = messageHasDeletedAttribute(item.message)
                 var viewCount: Int?
                 var rawText = ""
                 var dateReplies = 0
@@ -130,6 +131,7 @@ public class ChatMessageRestrictedBubbleContentNode: ChatMessageBubbleContentNod
                         context: item.context,
                         presentationData: item.presentationData,
                         edited: edited,
+                        deleted: deleted,
                         impressionCount: viewCount,
                         dateText: dateText,
                         type: statusType,

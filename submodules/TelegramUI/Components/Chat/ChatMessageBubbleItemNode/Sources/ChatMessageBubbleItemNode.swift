@@ -2125,6 +2125,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
         let read: Bool
         var isItemPinned = false
         var isItemEdited = false
+        var isItemDeleted = false
         
         switch item.content {
             case let .message(message, value, _, attributes, _):
@@ -2138,6 +2139,9 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                 for message in messages {
                     if message.0.tags.contains(.pinned) {
                         isItemPinned = true
+                    }
+                    if messageHasDeletedAttribute(message.0) {
+                        isItemDeleted = true
                     }
                     for attribute in message.0.attributes {
                         if let attribute = attribute as? EditedMessageAttribute {
@@ -2208,7 +2212,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                 prepareContentPosition = .linear(top: topPosition, bottom: refinedBottomPosition)
             }
             
-            let contentItem = ChatMessageBubbleContentItem(context: item.context, controllerInteraction: item.controllerInteraction, message: message, topMessage: item.content.firstMessage, content: item.content, read: read, chatLocation: item.chatLocation, presentationData: item.presentationData, associatedData: item.associatedData, attributes: attributes, isItemPinned: isItemPinned, isItemEdited: isItemEdited)
+            let contentItem = ChatMessageBubbleContentItem(context: item.context, controllerInteraction: item.controllerInteraction, message: message, topMessage: item.content.firstMessage, content: item.content, read: read, chatLocation: item.chatLocation, presentationData: item.presentationData, associatedData: item.associatedData, attributes: attributes, isItemPinned: isItemPinned, isItemEdited: isItemEdited, isItemDeleted: isItemDeleted)
             
             var itemSelection: Bool?
             switch content {
@@ -2509,6 +2513,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                 if item.content.firstMessageAttributes.updatingMedia != nil {
                     edited = true
                 }
+                let deleted = isItemDeleted || messageHasDeletedAttribute(message)
                 var viewCount: Int?
                 var dateReplies = 0
                 var starsCount: Int64?
@@ -2566,6 +2571,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                     context: item.context,
                     presentationData: item.presentationData,
                     edited: edited && !item.presentationData.isPreview,
+                    deleted: deleted,
                     impressionCount: !item.presentationData.isPreview ? viewCount : nil,
                     dateText: dateText,
                     type: statusType,

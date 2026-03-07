@@ -526,6 +526,7 @@ public class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
             if item.attributes.updatingMedia != nil {
                 edited = true
             }
+            let deleted = messageHasDeletedAttribute(item.message)
             let sentViaBot = false
             var viewCount: Int? = nil
             var dateReplies = 0
@@ -578,6 +579,7 @@ public class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
                 context: item.context,
                 presentationData: item.presentationData,
                 edited: edited && !sentViaBot && !item.presentationData.isPreview,
+                deleted: deleted,
                 impressionCount: !item.presentationData.isPreview ? viewCount : nil,
                 dateText: dateText,
                 type: statusType,

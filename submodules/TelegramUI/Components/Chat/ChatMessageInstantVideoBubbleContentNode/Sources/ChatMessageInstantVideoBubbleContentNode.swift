@@ -235,6 +235,7 @@ public class ChatMessageInstantVideoBubbleContentNode: ChatMessageBubbleContentN
                 attributes: item.attributes,
                 isPinned: item.isItemPinned,
                 forcedIsEdited: item.isItemEdited,
+                forcedIsDeleted: item.isItemDeleted,
                 file: selectedFile!,
                 automaticDownload: automaticDownload,
                 incoming: incoming,

@@ -147,7 +147,7 @@ func _internal_clearCallHistory(account: Account, forEveryone: Bool) -> Signal<N
         if forEveryone {
             flags |= 1 << 0
         }
-        
+
         let signal = account.network.request(Api.functions.messages.deletePhoneCallHistory(flags: flags))
         |> map { result -> Api.messages.AffectedFoundMessages? in
             return result

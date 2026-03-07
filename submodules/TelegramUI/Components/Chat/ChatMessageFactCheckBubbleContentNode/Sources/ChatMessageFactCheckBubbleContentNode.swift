@@ -292,6 +292,7 @@ public class ChatMessageFactCheckBubbleContentNode: ChatMessageBubbleContentNode
                 if item.attributes.updatingMedia != nil {
                     edited = true
                 }
+                let deleted = messageHasDeletedAttribute(item.message)
                 var viewCount: Int?
                 var rawText = ""
                 var rawEntities: [MessageTextEntity] = []
@@ -438,6 +439,7 @@ public class ChatMessageFactCheckBubbleContentNode: ChatMessageBubbleContentNode
                         context: item.context,
                         presentationData: item.presentationData,
                         edited: edited && !item.presentationData.isPreview,
+                        deleted: deleted,
                         impressionCount: !item.presentationData.isPreview ? viewCount : nil,
                         dateText: dateText,
                         type: statusType,

@@ -55,6 +55,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
         public let attributes: ChatMessageEntryAttributes
         public let isPinned: Bool
         public let forcedIsEdited: Bool
+        public let forcedIsDeleted: Bool
         public let file: TelegramMediaFile
         public let automaticDownload: Bool
         public let incoming: Bool
@@ -79,6 +80,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
             attributes: ChatMessageEntryAttributes,
             isPinned: Bool,
             forcedIsEdited: Bool,
+            forcedIsDeleted: Bool = false,
             file: TelegramMediaFile,
             automaticDownload: Bool,
             incoming: Bool,
@@ -102,6 +104,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
             self.attributes = attributes
             self.isPinned = isPinned
             self.forcedIsEdited = forcedIsEdited
+            self.forcedIsDeleted = forcedIsDeleted
             self.file = file
             self.automaticDownload = automaticDownload
             self.incoming = incoming
@@ -907,6 +910,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     if arguments.attributes.updatingMedia != nil {
                         edited = true
                     }
+                    var deleted = messageHasDeletedAttribute(arguments.message)
                     var viewCount: Int?
                     var dateReplies = 0
                     var starsCount: Int64?
@@ -929,6 +933,9 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     }
                     if arguments.forcedIsEdited {
                         edited = true
+                    }
+                    if arguments.forcedIsDeleted {
+                        deleted = true
                     }
                     
                     let dateFormat: MessageTimestampStatusFormat
@@ -957,6 +964,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                         context: arguments.context,
                         presentationData: arguments.presentationData,
                         edited: edited && !arguments.presentationData.isPreview,
+                        deleted: deleted,
                         impressionCount: !arguments.presentationData.isPreview ? viewCount : nil,
                         dateText: dateText,
                         type: statusType,

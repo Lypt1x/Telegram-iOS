@@ -1129,6 +1129,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
             }
             
             var edited = false
+            let deleted = messageHasDeletedAttribute(item.message)
             var viewCount: Int? = nil
             var dateReplies = 0
             var starsCount: Int64?
@@ -1168,6 +1169,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
                 context: item.context,
                 presentationData: item.presentationData,
                 edited: edited,
+                deleted: deleted,
                 impressionCount: viewCount,
                 dateText: dateText,
                 type: statusType,
