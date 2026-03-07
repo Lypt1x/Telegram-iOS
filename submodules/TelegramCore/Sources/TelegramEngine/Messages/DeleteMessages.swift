@@ -24,6 +24,54 @@ func addMessageMediaResourceIdsToRemove(message: Message, resourceIds: inout [Me
     }
 }
 
+struct RemoteDeleteMessagesResult {
+    let isPreserved: Bool
+    let displayAlerts: [String]
+}
+
+private func storeMessage(_ message: Message, with attributes: [MessageAttribute]) -> StoreMessage {
+    return StoreMessage(
+        id: message.id,
+        customStableId: nil,
+        globallyUniqueId: message.globallyUniqueId,
+        groupingKey: message.groupingKey,
+        threadId: message.threadId,
+        timestamp: message.timestamp,
+        flags: StoreMessageFlags(message.flags),
+        tags: message.tags,
+        globalTags: message.globalTags,
+        localTags: message.localTags,
+        forwardInfo: message.forwardInfo.flatMap(StoreMessageForwardInfo.init),
+        authorId: message.author?.id,
+        text: message.text,
+        attributes: attributes,
+        media: message.media
+    )
+}
+
+private func deletedMessagesAlertText(chatTitle: String, count: Int) -> String {
+    let resolvedChatTitle = chatTitle.isEmpty ? "this chat" : chatTitle
+    if count == 1 {
+        return "A message was deleted in \(resolvedChatTitle)."
+    } else {
+        return "\(count) messages were deleted in \(resolvedChatTitle)."
+    }
+}
+
+private func saveDeletedMessage(transaction: Transaction, message: Message, id: MessageId, deletedDate: Int32) {
+    let chatTitle = transaction.getPeer(id.peerId)?.debugDisplayTitle ?? ""
+    DeletedMessagesStore.shared.saveDeletedMessage(
+        messageId: id.id,
+        peerId: id.peerId.toInt64(),
+        authorId: message.author?.id.toInt64() ?? 0,
+        text: message.text,
+        date: message.timestamp,
+        deletedDate: deletedDate,
+        isOutgoing: !message.flags.contains(.Incoming),
+        chatTitle: chatTitle
+    )
+}
+
 public func _internal_deleteMessages(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId], deleteMedia: Bool = true, manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil) {
     var resourceIds: [MediaResourceId] = []
     if deleteMedia {
@@ -54,35 +102,62 @@ public func _internal_deleteMessages(transaction: Transaction, mediaBox: MediaBo
             }
         }
     }
-    // MARK: Swiftgram - Save deleted messages before removal
-    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
-        let now = Int32(Date().timeIntervalSince1970)
-        for id in ids {
-            if let message = transaction.getMessage(id) {
-                let isOutgoing = !message.flags.contains(.Incoming)
-                let authorId = message.author?.id.toInt64() ?? 0
-                let chatTitle: String
-                if let peer = transaction.getPeer(id.peerId) {
-                    chatTitle = peer.debugDisplayTitle
-                } else {
-                    chatTitle = ""
-                }
-                DeletedMessagesStore.shared.saveDeletedMessage(
-                    messageId: id.id,
-                    peerId: id.peerId.toInt64(),
-                    authorId: authorId,
-                    text: message.text,
-                    date: message.timestamp,
-                    deletedDate: now,
-                    isOutgoing: isOutgoing,
-                    chatTitle: chatTitle
-                )
-            }
-        }
-    }
-
     transaction.deleteMessages(ids, forEachMedia: { _ in
     })
+}
+
+func _internal_handleRemoteDeletedMessages(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId], manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil) -> RemoteDeleteMessagesResult {
+    guard SGSimpleSettings.shared.deletedMessagesHistoryEnabled else {
+        _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: ids, manualAddMessageThreadStatsDifference: manualAddMessageThreadStatsDifference)
+        return RemoteDeleteMessagesResult(isPreserved: false, displayAlerts: [])
+    }
+    
+    let now = Int32(Date().timeIntervalSince1970)
+    var seenIds = Set<MessageId>()
+    var groupedCounts: [PeerId: Int] = [:]
+    var groupedTitles: [PeerId: String] = [:]
+    var orderedPeerIds: [PeerId] = []
+    
+    for id in ids {
+        if !seenIds.insert(id).inserted {
+            continue
+        }
+        guard let message = transaction.getMessage(id) else {
+            continue
+        }
+        if message.attributes.contains(where: { $0 is DeletedMessageAttribute }) {
+            continue
+        }
+        
+        transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
+            var updatedAttributes = message.attributes
+            if updatedAttributes.contains(where: { $0 is DeletedMessageAttribute }) {
+                return .skip
+            }
+            updatedAttributes.append(DeletedMessageAttribute(date: now))
+            return .update(storeMessage(message, with: updatedAttributes))
+        }
+        
+        let chatTitle = transaction.getPeer(id.peerId)?.debugDisplayTitle ?? ""
+        if groupedCounts[id.peerId] == nil {
+            groupedCounts[id.peerId] = 0
+            groupedTitles[id.peerId] = chatTitle
+            orderedPeerIds.append(id.peerId)
+        }
+        groupedCounts[id.peerId, default: 0] += 1
+        
+        saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
+    }
+    
+    return RemoteDeleteMessagesResult(
+        isPreserved: true,
+        displayAlerts: orderedPeerIds.compactMap { peerId -> String? in
+            guard let count = groupedCounts[peerId] else {
+                return nil
+            }
+            return deletedMessagesAlertText(chatTitle: groupedTitles[peerId] ?? "", count: count)
+        }
+    )
 }
 
 func _internal_deleteAllMessagesWithAuthor(transaction: Transaction, mediaBox: MediaBox, peerId: PeerId, authorId: PeerId, namespace: MessageId.Namespace) {
