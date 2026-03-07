@@ -191,8 +191,8 @@ func _internal_keepShortcutMessagesUpdated(account: Account) -> Signal<Never, No
                                 let existingCloudMessages = transaction.getMessagesWithThreadId(peerId: account.peerId, namespace: Namespaces.Message.QuickReplyCloud, threadId: Int64(shortcut.id), from: MessageIndex.lowerBound(peerId: account.peerId, namespace: Namespaces.Message.QuickReplyCloud), includeFrom: false, to: MessageIndex.upperBound(peerId: account.peerId, namespace: Namespaces.Message.QuickReplyCloud), limit: 1000)
                                 let existingLocalMessages = transaction.getMessagesWithThreadId(peerId: account.peerId, namespace: Namespaces.Message.QuickReplyLocal, threadId: Int64(shortcut.id), from: MessageIndex.lowerBound(peerId: account.peerId, namespace: Namespaces.Message.QuickReplyLocal), includeFrom: false, to: MessageIndex.upperBound(peerId: account.peerId, namespace: Namespaces.Message.QuickReplyLocal), limit: 1000)
                                 
-                                transaction.deleteMessages(existingCloudMessages.map(\.id), forEachMedia: nil)
-                                transaction.deleteMessages(existingLocalMessages.map(\.id), forEachMedia: nil)
+                                _internal_deleteMessages(transaction: transaction, mediaBox: account.postbox.mediaBox, ids: existingCloudMessages.map(\.id), deleteMedia: false)
+                                _internal_deleteMessages(transaction: transaction, mediaBox: account.postbox.mediaBox, ids: existingLocalMessages.map(\.id), deleteMedia: false)
                             }
                         }
                     }

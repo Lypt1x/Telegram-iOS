@@ -290,7 +290,7 @@ private final class PendingPeerMediaUploadManagerImpl {
                             
                             if let messageId = context.value.messageId {
                                 context.disposable.set(strongSelf.postbox.transaction({ transaction in
-                                    transaction.deleteMessages([messageId], forEachMedia: nil)
+                                    _internal_deleteMessages(transaction: transaction, mediaBox: strongSelf.postbox.mediaBox, ids: [messageId], deleteMedia: false)
                                 }).start())
                             } else {
                                 context.disposable.dispose()
@@ -309,8 +309,9 @@ private final class PendingPeerMediaUploadManagerImpl {
             self.contexts.removeValue(forKey: peerId)
             
             if let messageId = context.value.messageId {
-                context.disposable.set(self.postbox.transaction({ transaction in
-                    transaction.deleteMessages([messageId], forEachMedia: nil)
+                context.disposable.set(self.postbox.transaction({ [weak self] transaction in
+                    guard let self else { return }
+                    _internal_deleteMessages(transaction: transaction, mediaBox: self.postbox.mediaBox, ids: [messageId], deleteMedia: false)
                 }).start())
             } else {
                 context.disposable.dispose()

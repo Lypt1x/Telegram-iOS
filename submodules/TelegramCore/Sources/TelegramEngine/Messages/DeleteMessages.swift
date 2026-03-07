@@ -73,6 +73,19 @@ private func saveDeletedMessage(transaction: Transaction, message: Message, id: 
 }
 
 public func _internal_deleteMessages(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId], deleteMedia: Bool = true, manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil) {
+    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+        let now = Int32(Date().timeIntervalSince1970)
+        for id in ids {
+            guard let message = transaction.getMessage(id) else { continue }
+            if message.attributes.contains(where: { $0 is DeletedMessageAttribute }) { continue }
+            let updatedAttributes = message.attributes + [DeletedMessageAttribute(date: now)]
+            transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
+                return .update(storeMessage(message, with: updatedAttributes))
+            }
+            saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
+        }
+        return
+    }
     var resourceIds: [MediaResourceId] = []
     if deleteMedia {
         for id in ids {
@@ -161,6 +174,24 @@ func _internal_handleRemoteDeletedMessages(transaction: Transaction, mediaBox: M
 }
 
 func _internal_deleteAllMessagesWithAuthor(transaction: Transaction, mediaBox: MediaBox, peerId: PeerId, authorId: PeerId, namespace: MessageId.Namespace) {
+    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+        let now = Int32(Date().timeIntervalSince1970)
+        var messagesToPreserve: [(MessageId, Message)] = []
+        transaction.withAllMessages(peerId: peerId, namespace: namespace, { message in
+            if message.author?.id == authorId && !message.attributes.contains(where: { $0 is DeletedMessageAttribute }) {
+                messagesToPreserve.append((message.id, message))
+            }
+            return true
+        })
+        for (id, message) in messagesToPreserve {
+            let updatedAttributes = message.attributes + [DeletedMessageAttribute(date: now)]
+            transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
+                return .update(storeMessage(message, with: updatedAttributes))
+            }
+            saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
+        }
+        return
+    }
     var resourceIds: [MediaResourceId] = []
     transaction.removeAllMessagesWithAuthor(peerId, authorId: authorId, namespace: namespace, forEachMedia: { media in
         addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
@@ -171,6 +202,24 @@ func _internal_deleteAllMessagesWithAuthor(transaction: Transaction, mediaBox: M
 }
 
 func _internal_deleteAllMessagesWithForwardAuthor(transaction: Transaction, mediaBox: MediaBox, peerId: PeerId, forwardAuthorId: PeerId, namespace: MessageId.Namespace) {
+    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+        let now = Int32(Date().timeIntervalSince1970)
+        var messagesToPreserve: [(MessageId, Message)] = []
+        transaction.withAllMessages(peerId: peerId, namespace: namespace, { message in
+            if message.forwardInfo?.author?.id == forwardAuthorId && !message.attributes.contains(where: { $0 is DeletedMessageAttribute }) {
+                messagesToPreserve.append((message.id, message))
+            }
+            return true
+        })
+        for (id, message) in messagesToPreserve {
+            let updatedAttributes = message.attributes + [DeletedMessageAttribute(date: now)]
+            transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
+                return .update(storeMessage(message, with: updatedAttributes))
+            }
+            saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
+        }
+        return
+    }
     var resourceIds: [MediaResourceId] = []
     transaction.removeAllMessagesWithForwardAuthor(peerId, forwardAuthorId: forwardAuthorId, namespace: namespace, forEachMedia: { media in
         addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
@@ -181,6 +230,25 @@ func _internal_deleteAllMessagesWithForwardAuthor(transaction: Transaction, medi
 }
 
 func _internal_clearHistory(transaction: Transaction, mediaBox: MediaBox, peerId: PeerId, threadId: Int64?, namespaces: MessageIdNamespaces) {
+    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+        let now = Int32(Date().timeIntervalSince1970)
+        var messagesToPreserve: [(MessageId, Message)] = []
+        transaction.withAllMessages(peerId: peerId, { message in
+            if let filterThreadId = threadId, message.threadId != filterThreadId { return true }
+            if !message.attributes.contains(where: { $0 is DeletedMessageAttribute }) {
+                messagesToPreserve.append((message.id, message))
+            }
+            return true
+        })
+        for (id, message) in messagesToPreserve {
+            let updatedAttributes = message.attributes + [DeletedMessageAttribute(date: now)]
+            transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
+                return .update(storeMessage(message, with: updatedAttributes))
+            }
+            saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
+        }
+        return
+    }
     if peerId.namespace == Namespaces.Peer.SecretChat {
         var resourceIds: [MediaResourceId] = []
         transaction.withAllMessages(peerId: peerId, { message in
@@ -196,6 +264,26 @@ func _internal_clearHistory(transaction: Transaction, mediaBox: MediaBox, peerId
 }
 
 func _internal_clearHistoryInRange(transaction: Transaction, mediaBox: MediaBox, peerId: PeerId, threadId: Int64?, minTimestamp: Int32, maxTimestamp: Int32, namespaces: MessageIdNamespaces) {
+    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+        let now = Int32(Date().timeIntervalSince1970)
+        var messagesToPreserve: [(MessageId, Message)] = []
+        transaction.withAllMessages(peerId: peerId, { message in
+            if let filterThreadId = threadId, message.threadId != filterThreadId { return true }
+            guard message.timestamp >= minTimestamp && message.timestamp <= maxTimestamp else { return true }
+            if !message.attributes.contains(where: { $0 is DeletedMessageAttribute }) {
+                messagesToPreserve.append((message.id, message))
+            }
+            return true
+        })
+        for (id, message) in messagesToPreserve {
+            let updatedAttributes = message.attributes + [DeletedMessageAttribute(date: now)]
+            transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
+                return .update(storeMessage(message, with: updatedAttributes))
+            }
+            saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
+        }
+        return
+    }
     if peerId.namespace == Namespaces.Peer.SecretChat {
         var resourceIds: [MediaResourceId] = []
         transaction.withAllMessages(peerId: peerId, { message in
@@ -210,6 +298,34 @@ func _internal_clearHistoryInRange(transaction: Transaction, mediaBox: MediaBox,
     }
     transaction.clearHistory(peerId, threadId: threadId, minTimestamp: minTimestamp, maxTimestamp: maxTimestamp, namespaces: namespaces, forEachMedia: { _ in
     })
+}
+
+func _internal_deleteMessagesInRange(transaction: Transaction, mediaBox: MediaBox, peerId: PeerId, namespace: MessageId.Namespace, minId: Int32, maxId: Int32) {
+    if SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+        let now = Int32(Date().timeIntervalSince1970)
+        var messagesToPreserve: [(MessageId, Message)] = []
+        transaction.withAllMessages(peerId: peerId, namespace: namespace, { message in
+            if message.id.id >= minId && message.id.id <= maxId && !message.attributes.contains(where: { $0 is DeletedMessageAttribute }) {
+                messagesToPreserve.append((message.id, message))
+            }
+            return true
+        })
+        for (id, message) in messagesToPreserve {
+            let updatedAttributes = message.attributes + [DeletedMessageAttribute(date: now)]
+            transaction.updateMessage(id) { _ -> PostboxUpdateMessage in
+                return .update(storeMessage(message, with: updatedAttributes))
+            }
+            saveDeletedMessage(transaction: transaction, message: message, id: id, deletedDate: now)
+        }
+        return
+    }
+    var resourceIds: [MediaResourceId] = []
+    transaction.deleteMessagesInRange(peerId: peerId, namespace: namespace, minId: minId, maxId: maxId, forEachMedia: { media in
+        addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
+    })
+    if !resourceIds.isEmpty {
+        let _ = mediaBox.removeCachedResources(Array(Set(resourceIds)), force: true).start()
+    }
 }
 
 public enum ClearCallHistoryError {
@@ -251,7 +367,9 @@ func _internal_clearCallHistory(account: Account, forEveryone: Bool) -> Signal<N
         |> `catch` { success -> Signal<Void, NoError> in
             if success {
                 return account.postbox.transaction { transaction -> Void in
-                    transaction.removeAllMessagesWithGlobalTag(tag: GlobalMessageTags.Calls)
+                    if !SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+                        transaction.removeAllMessagesWithGlobalTag(tag: GlobalMessageTags.Calls)
+                    }
                 }
             } else {
                 return .complete()

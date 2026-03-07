@@ -103,13 +103,7 @@ func managedApplyPendingScheduledMessagesActions(postbox: Postbox, network: Netw
                 })
                 |> then(
                     postbox.transaction { transaction -> Void in
-                        var resourceIds: [MediaResourceId] = []
-                        transaction.deleteMessages([entry.id], forEachMedia: { media in
-                            addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
-                        })
-                        if !resourceIds.isEmpty {
-                            let _ = postbox.mediaBox.removeCachedResources(Array(Set(resourceIds))).start()
-                        }
+                        _internal_deleteMessages(transaction: transaction, mediaBox: postbox.mediaBox, ids: [entry.id], deleteMedia: true)
                     }
                     |> ignoreValues
                 )
