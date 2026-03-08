@@ -349,23 +349,19 @@ extension ChatControllerImpl {
     }
         
     func beginDeleteMessagesWithUndo(messageIds: Set<MessageId>, type: InteractiveMessagesDeletionType, removeFromHistory: Bool = false) {
+        let preserveDeletedMessages = SGSimpleSettings.shared.deletedMessagesHistoryEnabled && !removeFromHistory
         let commit: () -> Void = { [weak self] in
             guard let self else {
                 return
             }
             if removeFromHistory {
                 let _ = self.context.engine.messages.removeMessagesFromHistoryInteractively(messageIds: Array(messageIds)).startStandalone()
-            } else if SGSimpleSettings.shared.deletedMessagesHistoryEnabled, case .forLocalPeer = type {
-                let _ = (self.context.engine.messages.deleteMessagesInteractively(messageIds: Array(messageIds), type: type)
-                |> deliverOnMainQueue).startStandalone(completed: { [weak self] in
-                    self?.chatDisplayNode.historyNode.ignoreMessageIds = Set()
-                })
             } else {
                 let _ = self.context.engine.messages.deleteMessagesInteractively(messageIds: Array(messageIds), type: type).startStandalone()
             }
         }
 
-        var deleteImmediately = removeFromHistory
+        var deleteImmediately = removeFromHistory || preserveDeletedMessages
         if case .forEveryone = type {
             deleteImmediately = true
         } else if case .scheduledMessages = self.presentationInterfaceState.subject {
@@ -609,7 +605,7 @@ extension ChatControllerImpl {
                 }))
             }
             if options.contains(.deleteLocally) {
-                var localOptionText = removeDeletedMessagesFromHistory ? "Delete from history" : self.presentationData.strings.Conversation_DeleteMessagesForMe
+                var localOptionText = removeDeletedMessagesFromHistory ? "Remove from history" : self.presentationData.strings.Conversation_DeleteMessagesForMe
                 if !removeDeletedMessagesFromHistory, self.chatLocation.peerId == self.context.account.peerId {
                     if case .scheduledMessages = self.presentationInterfaceState.subject {
                         localOptionText = messageIds.count > 1 ? self.presentationData.strings.ScheduledMessages_Reminder_DeleteMany : self.presentationData.strings.ScheduledMessages_Reminder_Delete

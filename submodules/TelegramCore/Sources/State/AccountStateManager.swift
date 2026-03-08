@@ -17,7 +17,7 @@ private enum AccountStateManagerOperationContent {
 private final class AccountStateManagerOperation {
     var isRunning: Bool = false
     let content: AccountStateManagerOperationContent
-    
+
     init(content: AccountStateManagerOperationContent) {
         self.content = content
     }
@@ -65,14 +65,31 @@ public enum DeletedMessageId: Hashable {
     case messageId(MessageId)
 }
 
+public enum AccountDisplayAlertType {
+    case modal
+    case inAppNotification
+}
+
+public struct AccountDisplayAlert {
+    public let text: String
+    public let isDropAuth: Bool
+    public let type: AccountDisplayAlertType
+
+    public init(text: String, isDropAuth: Bool, type: AccountDisplayAlertType = .modal) {
+        self.text = text
+        self.isDropAuth = isDropAuth
+        self.type = type
+    }
+}
+
 final class MessagesRemovedContext {
     private var messagesRemovedInteractively = Set<DeletedMessageId>()
     private var messagesRemovedRemotely = Set<DeletedMessageId>()
     private var messagesRemovedInteractivelyLock = NSLock()
-    
+
     func synchronouslyIsMessageDeletedInteractively(ids: [MessageId]) -> [EngineMessage.Id] {
         var result: [EngineMessage.Id] = []
-        
+
         self.messagesRemovedInteractivelyLock.lock()
         for id in ids {
             let mappedId: DeletedMessageId
@@ -86,13 +103,13 @@ final class MessagesRemovedContext {
             }
         }
         self.messagesRemovedInteractivelyLock.unlock()
-        
+
         return result
     }
-    
+
     func synchronouslyIsMessageDeletedRemotely(ids: [MessageId]) -> [EngineMessage.Id] {
         var result: [EngineMessage.Id] = []
-        
+
         self.messagesRemovedInteractivelyLock.lock()
         for id in ids {
             let mappedId: DeletedMessageId
@@ -106,25 +123,25 @@ final class MessagesRemovedContext {
             }
         }
         self.messagesRemovedInteractivelyLock.unlock()
-        
+
         return result
     }
-    
+
     func addIsMessagesDeletedInteractively(ids: [DeletedMessageId]) {
         if ids.isEmpty {
             return
         }
-        
+
         self.messagesRemovedInteractivelyLock.lock()
         self.messagesRemovedInteractively.formUnion(ids)
         self.messagesRemovedInteractivelyLock.unlock()
     }
-    
+
     func addIsMessagesDeletedRemotely(ids: [DeletedMessageId]) {
         if ids.isEmpty {
             return
         }
-        
+
         self.messagesRemovedInteractivelyLock.lock()
         self.messagesRemovedRemotely.formUnion(ids)
         self.messagesRemovedInteractivelyLock.unlock()
@@ -139,7 +156,7 @@ public final class AccountStateManager {
         public let peer: EnginePeer
         public let isVideo: Bool
         public let isConference: Bool
-        
+
         init(
             callId: Int64,
             callAccessHash: Int64,
@@ -156,42 +173,42 @@ public final class AccountStateManager {
             self.isConference = isConference
         }
     }
-    
+
     private final class Impl {
         private final class ChannelOperationData {
             let pts: Int32?
             let disposable: Disposable
             var isCompleted: Bool = false
-            
+
             init(pts: Int32?, disposable: Disposable) {
                 self.pts = pts
                 self.disposable = disposable
             }
-            
+
             deinit {
                 self.disposable.dispose()
             }
         }
-        
+
         private final class ChannelOperationsContext {
             let associatedDifferenceId: Int32
-            
+
             var pendingChannels: [PeerId: ChannelOperationData] = [:]
             var channelResults: [PeerId: AccountMutableState] = [:]
-            
+
             var events: AccountFinalStateEvents = AccountFinalStateEvents()
-            
+
             var canComplete: Bool = false
-            
+
             var isInternallyComplete: Bool {
                 return !self.pendingChannels.contains(where: { !$0.value.isCompleted })
             }
-            
+
             init(associatedDifferenceId: Int32) {
                 self.associatedDifferenceId = associatedDifferenceId
             }
         }
-        
+
         private let queue: Queue
         public let accountPeerId: PeerId
         private let accountManager: AccountManager<TelegramAccountManagerTypes>
@@ -200,14 +217,14 @@ public final class AccountStateManager {
         private let callSessionManager: CallSessionManager?
         private let addIsContactUpdates: ([(PeerId, Bool)]) -> Void
         private let shouldKeepOnlinePresence: Signal<Bool, NoError>
-        
+
         private let peerInputActivityManager: PeerInputActivityManager?
         let auxiliaryMethods: AccountAuxiliaryMethods
         var transformOutgoingMessageMedia: TransformOutgoingMessageMedia?
-        
+
         private var updateService: UpdateMessageService?
         private let updateServiceDisposable = MetaDisposable()
-        
+
         private var operations_: [AccountStateManagerOperation] = []
         private var operations: [AccountStateManagerOperation] {
             get {
@@ -220,19 +237,19 @@ public final class AccountStateManager {
         }
         private let operationDisposable = MetaDisposable()
         private var operationTimer: SignalKitTimer?
-        
+
         private var currentChannelOperationsContext: ChannelOperationsContext?
-        
+
         private var removePossiblyDeliveredMessagesUniqueIds: [Int64: PeerId] = [:]
-        
+
         private let currentValidityMarker: Int64 = Int64.random(in: Int64.min ... Int64.max)
-        
+
         private var nextId: Int32 = 0
         private func getNextId() -> Int32 {
             self.nextId += 1
             return self.nextId
         }
-        
+
         private let isUpdatingValue = ValuePromise<Bool>(true)
         private var currentIsUpdatingValue = true {
             didSet {
@@ -244,122 +261,122 @@ public final class AccountStateManager {
         public var isUpdating: Signal<Bool, NoError> {
             return self.isUpdatingValue.get()
         }
-        
+
         private let notificationMessagesPipe = ValuePipe<[([Message], PeerGroupId, Bool, MessageHistoryThreadData?)]>()
         public var notificationMessages: Signal<[([Message], PeerGroupId, Bool, MessageHistoryThreadData?)], NoError> {
             return self.notificationMessagesPipe.signal()
         }
-        
+
         private let reactionNotificationsPipe = ValuePipe<[(reactionAuthor: Peer, reaction: MessageReaction.Reaction, message: Message, timestamp: Int32)]>()
         public var reactionNotifications: Signal<[(reactionAuthor: Peer, reaction: MessageReaction.Reaction, message: Message, timestamp: Int32)], NoError> {
             return self.reactionNotificationsPipe.signal()
         }
-        
-        private let displayAlertsPipe = ValuePipe<[(text: String, isDropAuth: Bool)]>()
-        public var displayAlerts: Signal<[(text: String, isDropAuth: Bool)], NoError> {
+
+        private let displayAlertsPipe = ValuePipe<[AccountDisplayAlert]>()
+        public var displayAlerts: Signal<[AccountDisplayAlert], NoError> {
             return self.displayAlertsPipe.signal()
         }
-        
+
         private let dismissBotWebViewsPipe = ValuePipe<[Int64]>()
         public var dismissBotWebViews: Signal<[Int64], NoError> {
             return self.dismissBotWebViewsPipe.signal()
         }
-        
+
         private let externallyUpdatedPeerIdsPipe = ValuePipe<[PeerId]>()
         var externallyUpdatedPeerIds: Signal<[PeerId], NoError> {
             return self.externallyUpdatedPeerIdsPipe.signal()
         }
-        
+
         private let termsOfServiceUpdateValue = Atomic<TermsOfServiceUpdate?>(value: nil)
         private let termsOfServiceUpdatePromise = Promise<TermsOfServiceUpdate?>(nil)
         public var termsOfServiceUpdate: Signal<TermsOfServiceUpdate?, NoError> {
             return self.termsOfServiceUpdatePromise.get()
         }
-        
+
         private let appUpdateInfoValue = Atomic<AppUpdateInfo?>(value: nil)
         private let appUpdateInfoPromise = Promise<AppUpdateInfo?>(nil)
         public var appUpdateInfo: Signal<AppUpdateInfo?, NoError> {
             return self.appUpdateInfoPromise.get()
         }
-        
+
         private let contactBirthdaysValue = Atomic<[EnginePeer.Id: TelegramBirthday]>(value: [:])
         private let contactBirthdaysPromise = Promise<[EnginePeer.Id: TelegramBirthday]>([:])
         public var contactBirthdays: Signal<[EnginePeer.Id: TelegramBirthday], NoError> {
             return self.contactBirthdaysPromise.get()
         }
-        
+
         private let appliedIncomingReadMessagesPipe = ValuePipe<[MessageId]>()
         public var appliedIncomingReadMessages: Signal<[MessageId], NoError> {
             return self.appliedIncomingReadMessagesPipe.signal()
         }
-        
+
         private let significantStateUpdateCompletedPipe = ValuePipe<Void>()
         var significantStateUpdateCompleted: Signal<Void, NoError> {
             return self.significantStateUpdateCompletedPipe.signal()
         }
-        
+
         private let authorizationListUpdatesPipe = ValuePipe<Void>()
         var authorizationListUpdates: Signal<Void, NoError> {
             return self.authorizationListUpdatesPipe.signal()
         }
-        
+
         private let threadReadStateUpdatesPipe = ValuePipe<(incoming: [PeerAndBoundThreadId: MessageId.Id], outgoing: [PeerAndBoundThreadId: MessageId.Id])>()
         var threadReadStateUpdates: Signal<(incoming: [PeerAndBoundThreadId: MessageId.Id], outgoing: [PeerAndBoundThreadId: MessageId.Id]), NoError> {
             return self.threadReadStateUpdatesPipe.signal()
         }
-        
+
         private let groupCallParticipantUpdatesPipe = ValuePipe<[(Int64, GroupCallParticipantsContext.Update)]>()
         public var groupCallParticipantUpdates: Signal<[(Int64, GroupCallParticipantsContext.Update)], NoError> {
             return self.groupCallParticipantUpdatesPipe.signal()
         }
-        
+
         private let groupCallMessageUpdatesPipe = ValuePipe<[GroupCallMessageUpdate]>()
         public var groupCallMessageUpdates: Signal<[GroupCallMessageUpdate], NoError> {
             return self.groupCallMessageUpdatesPipe.signal()
         }
-        
+
         private let deletedMessagesPipe = ValuePipe<[DeletedMessageId]>()
         public var deletedMessages: Signal<[DeletedMessageId], NoError> {
             return self.deletedMessagesPipe.signal()
         }
-        
+
         let messagesRemovedContext: MessagesRemovedContext
-        
+
         fileprivate let storyUpdatesPipe = ValuePipe<[InternalStoryUpdate]>()
         public var storyUpdates: Signal<[InternalStoryUpdate], NoError> {
             return self.storyUpdatesPipe.signal()
         }
-        
+
         fileprivate let botPreviewUpdatesPipe = ValuePipe<[InternalBotPreviewUpdate]>()
         public var botPreviewUpdates: Signal<[InternalBotPreviewUpdate], NoError> {
             return self.botPreviewUpdatesPipe.signal()
         }
-        
+
         fileprivate let forceSendPendingStarsReactionPipe = ValuePipe<MessageId>()
         public var forceSendPendingStarsReaction: Signal<MessageId, NoError> {
             return self.forceSendPendingStarsReactionPipe.signal()
         }
-        
+
         fileprivate let forceSendPendingPaidMessagePipe = ValuePipe<PeerId>()
         public var forceSendPendingPaidMessage: Signal<PeerId, NoError> {
             return self.forceSendPendingPaidMessagePipe.signal()
         }
-        
+
         fileprivate let commitSendPendingPaidMessagePipe = ValuePipe<MessageId>()
         public var commitSendPendingPaidMessage: Signal<MessageId, NoError> {
             return self.commitSendPendingPaidMessagePipe.signal()
         }
-        
+
         fileprivate let sentScheduledMessageIdsPipe = ValuePipe<Set<MessageId>>()
         public var sentScheduledMessageIds: Signal<Set<MessageId>, NoError> {
             return self.sentScheduledMessageIdsPipe.signal()
         }
-        
+
         fileprivate let starRefBotConnectionEventsPipe = ValuePipe<StarRefBotConnectionEvent>()
         public var starRefBotConnectionEvents: Signal<StarRefBotConnectionEvent, NoError> {
             return self.starRefBotConnectionEventsPipe.signal()
         }
-        
+
         private var updatedWebpageContexts: [MediaId: UpdatedWebpageSubscriberContext] = [:]
         private var updatedPeersNearbyContext = UpdatedPeersNearbySubscriberContext()
         private var updatedStarsBalanceContext = UpdatedStarsBalanceSubscriberContext()
@@ -367,7 +384,7 @@ public final class AccountStateManager {
         private var updatedStarsRevenueStatusContext = UpdatedStarsRevenueStatusSubscriberContext()
         private var updatedStarGiftAuctionStateContext = UpdatedStarGiftAuctionStateSubscriberContext()
         private var updatedStarGiftAuctionMyStateContext = UpdatedStarGiftAuctionMyStateSubscriberContext()
-        
+
         private let delayNotificatonsUntil = Atomic<Int32?>(value: nil)
         private let appliedMaxMessageIdPromise = Promise<Int32?>(nil)
         private let appliedMaxMessageIdDisposable = MetaDisposable()
@@ -375,10 +392,10 @@ public final class AccountStateManager {
         private let appliedQtsDisposable = MetaDisposable()
         private let reportMessageDeliveryDisposable = DisposableSet()
         private let updateEmojiGameInfoDisposable = MetaDisposable()
-        
+
         let updateConfigRequested: (() -> Void)?
         let isPremiumUpdated: (() -> Void)?
-        
+
         init(
             queue: Queue,
             accountPeerId: PeerId,
@@ -408,7 +425,7 @@ public final class AccountStateManager {
             self.isPremiumUpdated = isPremiumUpdated
             self.messagesRemovedContext = messagesRemovedContext
         }
-        
+
         deinit {
             self.updateServiceDisposable.dispose()
             self.operationDisposable.dispose()
@@ -417,7 +434,7 @@ public final class AccountStateManager {
             self.reportMessageDeliveryDisposable.dispose()
             self.updateEmojiGameInfoDisposable.dispose()
         }
-        
+
         public func reset() {
             self.queue.async {
                 if self.updateService == nil {
@@ -432,12 +449,12 @@ public final class AccountStateManager {
                 self.operationDisposable.set(nil)
                 self.replaceOperations(with: .pollDifference(self.getNextId(), AccountFinalStateEvents()))
                 self.startFirstOperation()
-                
+
                 let appliedValues: [(MetaDisposable, Signal<Int32?, NoError>, Bool)] = [
                     (self.appliedMaxMessageIdDisposable, self.appliedMaxMessageIdPromise.get(), true),
                     (self.appliedQtsDisposable, self.appliedQtsPromise.get(), false)
                 ]
-                
+
                 for (disposable, value, isMaxMessageId) in appliedValues {
                     let network = self.network
                     disposable.set((combineLatest(queue: self.queue, self.shouldKeepOnlinePresence, value)
@@ -474,13 +491,13 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         func addUpdates(_ updates: Api.Updates) {
             self.queue.async {
                 self.updateService?.addUpdates(updates)
             }
         }
-        
+
         func addUpdateGroups(_ groups: [UpdateGroup]) {
             self.queue.async {
                 if let last = self.operations.last {
@@ -498,7 +515,7 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         func addReplayAsynchronouslyBuiltFinalState(_ finalState: AccountFinalState) -> Signal<Bool, NoError> {
             return Signal { subscriber in
                 self.queue.async {
@@ -510,7 +527,7 @@ public final class AccountStateManager {
                 return EmptyDisposable
             }
         }
-        
+
         func addCustomOperation<T, E>(_ f: Signal<T, E>) -> Signal<T, E> {
             let pipe = ValuePipe<CustomOperationEvent<T, E>>()
             return Signal<T, E> { subscriber in
@@ -524,7 +541,7 @@ public final class AccountStateManager {
                         subscriber.putCompletion()
                     }
                 })
-                
+
                 let signal = Signal<Void, NoError> { subscriber in
                     return f.start(next: { next in
                         pipe.putNext(.Next(next))
@@ -536,13 +553,13 @@ public final class AccountStateManager {
                         subscriber.putCompletion()
                     })
                 }
-                
+
                 self.addOperation(.custom(self.getNextId(), signal), position: .last)
-                
+
                 return disposable
             } |> runOn(self.queue)
         }
-        
+
         private func replaceOperations(with content: AccountStateManagerOperationContent) {
             var collectedProcessUpdateGroups: [AccountStateManagerOperationContent] = []
             var collectedMessageIds: [MessageId] = []
@@ -550,9 +567,9 @@ public final class AccountStateManager {
             var collectedReplayAsynchronouslyBuiltFinalState: [(AccountFinalState, () -> Void)] = []
             var processEvents: [(Int32, AccountFinalStateEvents)] = []
             var customOperations: [(Int32, Signal<Void, NoError>)] = []
-            
+
             var replacedOperations: [AccountStateManagerOperation] = []
-            
+
             for i in 0 ..< self.operations.count {
                 if self.operations[i].isRunning {
                     replacedOperations.append(self.operations[i])
@@ -574,31 +591,31 @@ public final class AccountStateManager {
                     }
                 }
             }
-            
+
             replacedOperations.append(contentsOf: collectedProcessUpdateGroups.map { AccountStateManagerOperation(content: $0) })
-            
+
             replacedOperations.append(AccountStateManagerOperation(content: content))
-            
+
             if !collectedPollCompletionSubscribers.isEmpty || !collectedMessageIds.isEmpty {
                 replacedOperations.append(AccountStateManagerOperation(content: .pollCompletion(self.getNextId(), collectedMessageIds, collectedPollCompletionSubscribers)))
             }
-            
+
             for (finalState, completion) in collectedReplayAsynchronouslyBuiltFinalState {
                 replacedOperations.append(AccountStateManagerOperation(content: .replayAsynchronouslyBuiltFinalState(finalState, completion)))
             }
-            
+
             for (operationId, events) in processEvents {
                 replacedOperations.append(AccountStateManagerOperation(content: .processEvents(operationId, events)))
             }
-            
+
             for (operationId, customSignal) in customOperations {
                 replacedOperations.append(AccountStateManagerOperation(content: .custom(operationId, customSignal)))
             }
-            
+
             self.operations.removeAll()
             self.operations.append(contentsOf: replacedOperations)
         }
-        
+
         private func addOperation(_ content: AccountStateManagerOperationContent, position: AccountStateManagerAddOperationPosition) {
             self.queue.async {
                 let operation = AccountStateManagerOperation(content: content)
@@ -619,7 +636,7 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         private func addAsyncResetChannels(peers: [(peer: Peer, pts: Int32?)]) {
             //TODO:pts
             guard let operation = self.operations.first, case let .pollDifference(initialId, _) = operation.content else {
@@ -633,7 +650,7 @@ public final class AccountStateManager {
                 channelOperationsContext = ChannelOperationsContext(associatedDifferenceId: initialId)
                 self.currentChannelOperationsContext = channelOperationsContext
             }
-            
+
             for peer in peers {
                 let replaceChannelOperation: Bool
                 if let current = channelOperationsContext.pendingChannels[peer.peer.id] {
@@ -658,7 +675,7 @@ public final class AccountStateManager {
                             transaction.setState(state.withInvalidatedChannels(invalidatedChannels))
                         }
                     }).start()
-                    
+
                     let channelDisposable = MetaDisposable()
                     channelOperationsContext.pendingChannels[peer.peer.id] = ChannelOperationData(pts: peer.pts, disposable: channelDisposable)
                     channelDisposable.set((self.postbox.transaction { transaction -> AccountMutableState in
@@ -694,15 +711,15 @@ public final class AccountStateManager {
                         } else {
                             assertionFailure("Invalid state")
                         }
-                        
+
                         channelOperationsContext.channelResults[peer.peer.id] = result
-                        
+
                         self.checkChannelOperationsCompletion()
                     }))
                 }
             }
         }
-        
+
         private func checkChannelOperationsCompletion() {
             guard let channelOperationsContext = self.currentChannelOperationsContext else {
                 return
@@ -713,7 +730,7 @@ public final class AccountStateManager {
             if !channelOperationsContext.isInternallyComplete {
                 return
             }
-            
+
             let states = channelOperationsContext.channelResults.sorted(by: { $0.key < $1.key }).map(\.value)
             if !states.isEmpty {
                 var finalMutableState = states[0]
@@ -722,7 +739,7 @@ public final class AccountStateManager {
                         finalMutableState.merge(states[i])
                     }
                 }
-                
+
                 let accountManager = self.accountManager
                 let postbox = self.postbox
                 let accountPeerId = self.accountPeerId
@@ -731,12 +748,12 @@ public final class AccountStateManager {
                 let auxiliaryMethods = self.auxiliaryMethods
                 let events = channelOperationsContext.events
                 let messagesRemovedContext = self.messagesRemovedContext
-                
+
                 let _ = (self.postbox.transaction { transaction -> AccountReplayedFinalState? in
                     if let state = transaction.getState() as? AuthorizedAccountState {
                         transaction.setState(state.withInvalidatedChannels([]))
                     }
-                    
+
                     let result = replayFinalState(
                         accountManager: accountManager,
                         postbox: postbox,
@@ -756,12 +773,12 @@ public final class AccountStateManager {
                         ignoreDate: false,
                         skipVerification: true
                     )
-                    
+
                     if let result = result, !result.deletedMessageIds.isEmpty {
                         messagesRemovedContext.addIsMessagesDeletedInteractively(ids: result.deletedMessageIds)
                         messagesRemovedContext.addIsMessagesDeletedRemotely(ids: result.deletedMessageIds)
                     }
-                    
+
                     return result
                 }
                 |> deliverOn(self.queue)).start(next: { [weak self] finalState in
@@ -789,7 +806,7 @@ public final class AccountStateManager {
                 self.significantStateUpdateCompletedPipe.putNext(Void())
             }
         }
-        
+
         private func startFirstOperation() {
             guard let operation = self.operations.first else {
                 return
@@ -811,17 +828,17 @@ public final class AccountStateManager {
                 let accountPeerId = self.accountPeerId
                 let auxiliaryMethods = self.auxiliaryMethods
                 let messagesRemovedContext = self.messagesRemovedContext
-                
+
                 let signal = postbox.transaction { transaction -> (AuthorizedAccountState?, [(peer: Peer, pts: Int32?)], Bool) in
                     let state = transaction.getState() as? AuthorizedAccountState
-                    
+
                     var disableParallelChannelReset = false
                     if let appConfig = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self), let data = appConfig.data {
                         if let _ = data["ios_disable_parallel_channel_reset_v2"] {
                             disableParallelChannelReset = true
                         }
                     }
-                    
+
                     var invalidatedChannels: [(peer: Peer, pts: Int32?)] = []
                     if let state = state, !disableParallelChannelReset {
                         for record in state.invalidatedChannels {
@@ -832,7 +849,7 @@ public final class AccountStateManager {
                             }
                         }
                     }
-                    
+
                     return (state, invalidatedChannels, disableParallelChannelReset)
                 }
                 |> deliverOn(self.queue)
@@ -840,21 +857,21 @@ public final class AccountStateManager {
                     if let state = state, let authorizedState = state.state {
                         var flags: Int32 = 0
                         var ptsTotalLimit: Int32?
-                        
+
                         if !"".isEmpty {
                             flags |= 1 << 0
                             ptsTotalLimit = 1000
                         }
-                        
+
                         flags = 0
                         ptsTotalLimit = nil
-                        
+
                         if let strongSelf = self {
                             if !invalidatedChannels.isEmpty {
                                 strongSelf.addAsyncResetChannels(peers: invalidatedChannels)
                             }
                         }
-                        
+
                         let request = network.request(Api.functions.updates.getDifference(flags: flags, pts: authorizedState.pts, ptsLimit: nil, ptsTotalLimit: ptsTotalLimit, date: authorizedState.date, qts: authorizedState.qts, qtsLimit: nil))
                         |> map(Optional.init)
                         |> `catch` { error -> Signal<Api.updates.Difference?, MTRpcError> in
@@ -865,7 +882,7 @@ public final class AccountStateManager {
                             }
                         }
                         |> retryRequest
-                        
+
                         return request
                         |> mapToSignal { difference -> Signal<(difference: Api.updates.Difference?, finalStatte: AccountReplayedFinalState?, skipBecauseOfError: Bool, resetState: Bool), NoError> in
                             guard let difference = difference else {
@@ -901,13 +918,13 @@ public final class AccountStateManager {
                                                 if deltaTime > 1.0 {
                                                     Logger.shared.log("State", "replayFinalState took \(deltaTime)s")
                                                 }
-                                                
+
                                                 if let replayedState = replayedState {
                                                     if !replayedState.deletedMessageIds.isEmpty {
                                                         messagesRemovedContext.addIsMessagesDeletedInteractively(ids: replayedState.deletedMessageIds)
                                                         messagesRemovedContext.addIsMessagesDeletedRemotely(ids: replayedState.deletedMessageIds)
                                                     }
-                                                    
+
                                                     return (difference, replayedState, false, false)
                                                 } else {
                                                     return (nil, nil, false, false)
@@ -937,7 +954,7 @@ public final class AccountStateManager {
                     }
                 }
                 |> deliverOn(self.queue)
-                
+
                 let _ = signal.start(next: { [weak self] difference, finalState, skipBecauseOfError, resetState in
                     guard let strongSelf = self else {
                         return
@@ -968,7 +985,7 @@ public final class AccountStateManager {
                                     if let currentChannelOperationsContext = strongSelf.currentChannelOperationsContext {
                                         currentChannelOperationsContext.canComplete = true
                                         currentChannelOperationsContext.events = currentChannelOperationsContext.events.union(with: events)
-                                        
+
                                         strongSelf.checkChannelOperationsCompletion()
                                     } else {
                                         if !events.isEmpty {
@@ -1022,7 +1039,7 @@ public final class AccountStateManager {
                 let mediaBox = postbox.mediaBox
                 let queue = self.queue
                 let messagesRemovedContext = self.messagesRemovedContext
-                
+
                 let signal = initialStateWithUpdateGroups(postbox: postbox, groups: groups)
                 |> mapToSignal { [weak self] state -> Signal<(AccountReplayedFinalState?, AccountFinalState), NoError> in
                     return finalStateWithUpdateGroups(accountPeerId: accountPeerId, postbox: postbox, network: network, state: state, groups: groups, asyncResetChannels: nil)
@@ -1033,21 +1050,21 @@ public final class AccountStateManager {
                                 postbox.mediaBox.storeResourceData(resource.id, data: data)
                             }
                         }
-                        
+
                         let removePossiblyDeliveredMessagesUniqueIds = self?.removePossiblyDeliveredMessagesUniqueIds ?? Dictionary()
-                        
+
                         return postbox.transaction { transaction -> AccountReplayedFinalState? in
                             if finalState.discard {
                                 return nil
                             } else {
                                 let startTime = CFAbsoluteTimeGetCurrent()
                                 let result = replayFinalState(accountManager: accountManager, postbox: postbox, accountPeerId: accountPeerId, mediaBox: mediaBox, encryptionProvider: network.encryptionProvider, transaction: transaction, auxiliaryMethods: auxiliaryMethods, finalState: finalState, removePossiblyDeliveredMessagesUniqueIds: removePossiblyDeliveredMessagesUniqueIds, ignoreDate: false, skipVerification: false)
-                                
+
                                 if let result = result, !result.deletedMessageIds.isEmpty {
                                     messagesRemovedContext.addIsMessagesDeletedInteractively(ids: result.deletedMessageIds)
                                     messagesRemovedContext.addIsMessagesDeletedRemotely(ids: result.deletedMessageIds)
                                 }
-                                
+
                                 let deltaTime = CFAbsoluteTimeGetCurrent() - startTime
                                 if deltaTime > 1.0 {
                                     Logger.shared.log("State", "replayFinalState took \(deltaTime)s")
@@ -1203,14 +1220,14 @@ public final class AccountStateManager {
                         }
                     }
                 }
-                
+
                 if events.delayNotificatonsUntil != nil {
                     let _ = self.delayNotificatonsUntil.swap(events.delayNotificatonsUntil)
                 }
-                
+
                 let signal = self.postbox.transaction { transaction -> [([Message], PeerGroupId, Bool, MessageHistoryThreadData?)] in
                     var messageList: [([Message], PeerGroupId, Bool, MessageHistoryThreadData?)] = []
-                    
+
                     for id in events.addedIncomingMessageIds {
                         let (messages, notify, _, _, threadData) = messagesForNotification(transaction: transaction, id: id, alwaysReturnMessage: false)
                         if !messages.isEmpty {
@@ -1237,7 +1254,7 @@ public final class AccountStateManager {
                     }
                     return messageList
                 }
-                
+
                 let _ = (signal
                 |> deliverOn(self.queue)).start(next: { [weak self] messages in
                     if let strongSelf = self {
@@ -1246,7 +1263,7 @@ public final class AccountStateManager {
                 }, completed: {
                     completed()
                 })
-                
+
                 let timestamp = Int32(Date().timeIntervalSince1970)
                 let minReactionTimestamp = timestamp - 20
                 let reactionEvents = events.addedReactionEvents.compactMap { event -> (reactionAuthor: Peer, reaction: MessageReaction.Reaction, message: Message, timestamp: Int32)? in
@@ -1257,31 +1274,31 @@ public final class AccountStateManager {
                     }
                 }
                 self.reactionNotificationsPipe.putNext(reactionEvents)
-                
+
                 if !events.displayAlerts.isEmpty {
                     self.displayAlertsPipe.putNext(events.displayAlerts)
                 }
-                
+
                 if !events.dismissBotWebViews.isEmpty {
                     self.dismissBotWebViewsPipe.putNext(events.dismissBotWebViews)
                 }
-                
+
                 if !events.externallyUpdatedPeerId.isEmpty {
                     self.externallyUpdatedPeerIdsPipe.putNext(Array(events.externallyUpdatedPeerId))
                 }
-                
+
                 if events.authorizationListUpdated {
                     self.authorizationListUpdatesPipe.putNext(Void())
                 }
-                
+
                 if !events.deletedMessageIds.isEmpty {
                     self.deletedMessagesPipe.putNext(events.deletedMessageIds)
                 }
-                
+
                 if events.updateConfig {
                     self.updateConfigRequested?()
                 }
-                
+
                 if events.isPremiumUpdated {
                     self.isPremiumUpdated?()
                 }
@@ -1299,7 +1316,7 @@ public final class AccountStateManager {
                             let topOperation = strongSelf.operations.removeFirst()
                             if case let .pollCompletion(topPollId, messageIds, subscribers) = topOperation.content {
                                 assert(topPollId == pollId)
-                                
+
                                 if strongSelf.operations.isEmpty {
                                     for (_, f) in subscribers {
                                         f(messageIds)
@@ -1325,7 +1342,7 @@ public final class AccountStateManager {
                         self.postbox.mediaBox.storeResourceData(resource.id, data: data)
                     }
                 }
-                
+
                 let accountPeerId = self.accountPeerId
                 let accountManager = self.accountManager
                 let postbox = self.postbox
@@ -1341,17 +1358,17 @@ public final class AccountStateManager {
                     if deltaTime > 1.0 {
                         Logger.shared.log("State", "replayFinalState took \(deltaTime)s")
                     }
-                    
+
                     if let result = result, !result.deletedMessageIds.isEmpty {
                         messagesRemovedContext.addIsMessagesDeletedInteractively(ids: result.deletedMessageIds)
                         messagesRemovedContext.addIsMessagesDeletedRemotely(ids: result.deletedMessageIds)
                     }
-                    
+
                     return result
                 }
                 |> map({ ($0, finalState) })
                 |> deliverOn(self.queue)
-                
+
                 let _ = signal.start(next: { [weak self] replayedState, finalState in
                     if let strongSelf = self {
                         if case .replayAsynchronouslyBuiltFinalState = strongSelf.operations.removeFirst().content {
@@ -1370,14 +1387,14 @@ public final class AccountStateManager {
                 })
             }
         }
-        
+
         func standaloneReplayAsynchronouslyBuiltFinalState(finalState: AccountFinalState) -> Signal<Never, NoError> {
             if !finalState.state.preCachedResources.isEmpty {
                 for (resource, data) in finalState.state.preCachedResources {
                     self.postbox.mediaBox.storeResourceData(resource.id, data: data)
                 }
             }
-            
+
             let accountPeerId = self.accountPeerId
             let accountManager = self.accountManager
             let postbox = self.postbox
@@ -1386,16 +1403,16 @@ public final class AccountStateManager {
             let auxiliaryMethods = self.auxiliaryMethods
             let removePossiblyDeliveredMessagesUniqueIds = self.removePossiblyDeliveredMessagesUniqueIds
             let messagesRemovedContext = self.messagesRemovedContext
-            
+
             let signal = self.postbox.transaction { transaction -> AccountReplayedFinalState? in
                 let startTime = CFAbsoluteTimeGetCurrent()
                 let result = replayFinalState(accountManager: accountManager, postbox: postbox, accountPeerId: accountPeerId, mediaBox: mediaBox, encryptionProvider: network.encryptionProvider, transaction: transaction, auxiliaryMethods: auxiliaryMethods, finalState: finalState, removePossiblyDeliveredMessagesUniqueIds: removePossiblyDeliveredMessagesUniqueIds, ignoreDate: false, skipVerification: false)
-                
+
                 if let result = result, !result.deletedMessageIds.isEmpty {
                     messagesRemovedContext.addIsMessagesDeletedInteractively(ids: result.deletedMessageIds)
                     messagesRemovedContext.addIsMessagesDeletedRemotely(ids: result.deletedMessageIds)
                 }
-                
+
                 let deltaTime = CFAbsoluteTimeGetCurrent() - startTime
                 if deltaTime > 1.0 {
                     Logger.shared.log("State", "replayFinalState took \(deltaTime)s")
@@ -1404,11 +1421,11 @@ public final class AccountStateManager {
             }
             |> map({ ($0, finalState) })
             |> deliverOn(self.queue)
-            
+
             return signal
             |> ignoreValues
         }
-        
+
         public func standalonePollDifference() -> Signal<Bool, NoError> {
             let queue = self.queue
             let accountManager = self.accountManager
@@ -1418,7 +1435,7 @@ public final class AccountStateManager {
             let accountPeerId = self.accountPeerId
             let auxiliaryMethods = self.auxiliaryMethods
             let messagesRemovedContext = self.messagesRemovedContext
-            
+
             let signal = postbox.stateView()
             |> mapToSignal { view -> Signal<AuthorizedAccountState, NoError> in
                 if let state = view.state as? AuthorizedAccountState {
@@ -1432,7 +1449,7 @@ public final class AccountStateManager {
                 if let authorizedState = state.state {
                     let flags: Int32 = 0
                     let ptsTotalLimit: Int32? = nil
-                    
+
                     let request = network.request(Api.functions.updates.getDifference(flags: flags, pts: authorizedState.pts, ptsLimit: nil, ptsTotalLimit: ptsTotalLimit, date: Int32.max, qts: authorizedState.qts, qtsLimit: nil))
                     |> map(Optional.init)
                     |> `catch` { error -> Signal<Api.updates.Difference?, MTRpcError> in
@@ -1443,7 +1460,7 @@ public final class AccountStateManager {
                         }
                     }
                     |> retryRequest
-                    
+
                     return request
                     |> mapToSignal { difference -> Signal<(difference: Api.updates.Difference?, finalStatte: AccountReplayedFinalState?, skipBecauseOfError: Bool), NoError> in
                         guard let difference = difference else {
@@ -1483,17 +1500,17 @@ public final class AccountStateManager {
                                                 ignoreDate: true,
                                                 skipVerification: false
                                             )
-                                            
+
                                             if let replayedState = replayedState, !replayedState.deletedMessageIds.isEmpty {
                                                 messagesRemovedContext.addIsMessagesDeletedInteractively(ids: replayedState.deletedMessageIds)
                                                 messagesRemovedContext.addIsMessagesDeletedRemotely(ids: replayedState.deletedMessageIds)
                                             }
-                                            
+
                                             let deltaTime = CFAbsoluteTimeGetCurrent() - startTime
                                             if deltaTime > 1.0 {
                                                 Logger.shared.log("State", "replayFinalState took \(deltaTime)s")
                                             }
-                                            
+
                                             if let replayedState = replayedState {
                                                 return (difference, replayedState, false)
                                             } else {
@@ -1510,7 +1527,7 @@ public final class AccountStateManager {
                 }
             }
             |> deliverOn(self.queue)
-            
+
             return signal
             |> mapToSignal { difference, _, _ -> Signal<Bool, NoError> in
                 if let difference = difference {
@@ -1525,7 +1542,7 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         private func insertProcessEvents(_ events: AccountFinalStateEvents) {
             if !events.isEmpty {
                 let operation = AccountStateManagerOperation(content: .processEvents(self.getNextId(), events))
@@ -1546,10 +1563,10 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         private func postponePollCompletionOperation(messageIds: [MessageId], subscribers: [(Int32, ([MessageId]) -> Void)]) {
             self.addOperation(.pollCompletion(self.getNextId(), messageIds, subscribers), position: .last)
-            
+
             for i in 0 ..< self.operations.count {
                 if case .pollCompletion = self.operations[i].content {
                     if i != self.operations.count - 1 {
@@ -1558,12 +1575,12 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         private func addPollCompletion(_ f: @escaping ([MessageId]) -> Void) -> Int32 {
             assert(self.queue.isCurrent())
-            
+
             let updatedId: Int32 = self.getNextId()
-            
+
             for i in 0 ..< self.operations.count {
                 if case let .pollCompletion(pollId, messageIds, subscribers) = self.operations[i].content {
                     var subscribers = subscribers
@@ -1574,12 +1591,12 @@ public final class AccountStateManager {
                     return updatedId
                 }
             }
-            
+
             self.addOperation(.pollCompletion(self.getNextId(), [], [(updatedId, f)]), position: .last)
-            
+
             return updatedId
         }
-        
+
         private func removePollCompletion(_ id: Int32) {
             for i in 0 ..< self.operations.count {
                 if case let .pollCompletion(pollId, messages, subscribers) = self.operations[i].content {
@@ -1596,7 +1613,7 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         public func pollStateUpdateCompletion() -> Signal<[MessageId], NoError> {
             return Signal { [weak self] subscriber in
                 let disposable = MetaDisposable()
@@ -1606,7 +1623,7 @@ public final class AccountStateManager {
                             subscriber.putNext(messageIds)
                             subscriber.putCompletion()
                         })
-                        
+
                         disposable.set(ActionDisposable {
                             if let strongSelf = self {
                                 strongSelf.queue.async {
@@ -1619,7 +1636,7 @@ public final class AccountStateManager {
                 return disposable
             }
         }
-        
+
         public func updatedWebpage(_ webpageId: MediaId) -> Signal<TelegramMediaWebpage, NoError> {
             let queue = self.queue
             return Signal { [weak self] subscriber in
@@ -1633,11 +1650,11 @@ public final class AccountStateManager {
                             context = UpdatedWebpageSubscriberContext()
                             strongSelf.updatedWebpageContexts[webpageId] = context
                         }
-                        
+
                         let index = context.subscribers.add({ media in
                             subscriber.putNext(media)
                         })
-                        
+
                         disposable.set(ActionDisposable {
                             if let strongSelf = self {
                                 if let context = strongSelf.updatedWebpageContexts[webpageId] {
@@ -1653,7 +1670,7 @@ public final class AccountStateManager {
                 return disposable
             }
         }
-        
+
         private func notifyUpdatedWebpages(_ updatedWebpages: [MediaId: TelegramMediaWebpage]) {
             for (id, context) in self.updatedWebpageContexts {
                 if let media = updatedWebpages[id] {
@@ -1663,15 +1680,15 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         func notifyAppliedIncomingReadMessages(_ ids: [MessageId]) {
             self.appliedIncomingReadMessagesPipe.putNext(ids)
         }
-        
+
         public func getDelayNotificatonsUntil() -> Int32? {
             return self.delayNotificatonsUntil.with { $0 }
         }
-        
+
         func modifyTermsOfServiceUpdate(_ f: @escaping (TermsOfServiceUpdate?) -> (TermsOfServiceUpdate?)) {
             self.queue.async {
                 let current = self.termsOfServiceUpdateValue.with { $0 }
@@ -1682,7 +1699,7 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         func modifyAppUpdateInfo(_ f: @escaping (AppUpdateInfo?) -> (AppUpdateInfo?)) {
             self.queue.async {
                 let current = self.appUpdateInfoValue.with { $0 }
@@ -1693,7 +1710,7 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         func modifyContactBirthdays(_ f: @escaping ([EnginePeer.Id: TelegramBirthday]) -> ([EnginePeer.Id: TelegramBirthday])) {
             self.queue.async {
                 let current = self.contactBirthdaysValue.with { $0 }
@@ -1704,7 +1721,7 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         public func updatedPeersNearby() -> Signal<[PeerNearby], NoError> {
             let queue = self.queue
             return Signal { [weak self] subscriber in
@@ -1714,7 +1731,7 @@ public final class AccountStateManager {
                         let index = strongSelf.updatedPeersNearbyContext.subscribers.add({ peersNearby in
                             subscriber.putNext(peersNearby)
                         })
-                        
+
                         disposable.set(ActionDisposable {
                             if let strongSelf = self {
                                 strongSelf.updatedPeersNearbyContext.subscribers.remove(index)
@@ -1725,13 +1742,13 @@ public final class AccountStateManager {
                 return disposable
             }
         }
-        
+
         private func notifyUpdatedPeersNearby(_ updatedPeersNearby: [PeerNearby]) {
             for subscriber in self.updatedPeersNearbyContext.subscribers.copyItems() {
                 subscriber(updatedPeersNearby)
             }
         }
-        
+
         public func updatedStarsBalance() -> Signal<[PeerId: StarsAmount], NoError> {
             let queue = self.queue
             return Signal { [weak self] subscriber in
@@ -1741,7 +1758,7 @@ public final class AccountStateManager {
                         let index = strongSelf.updatedStarsBalanceContext.subscribers.add({ starsBalance in
                             subscriber.putNext(starsBalance)
                         })
-                        
+
                         disposable.set(ActionDisposable {
                             if let strongSelf = self {
                                 strongSelf.updatedStarsBalanceContext.subscribers.remove(index)
@@ -1752,13 +1769,13 @@ public final class AccountStateManager {
                 return disposable
             }
         }
-                
+
         private func notifyUpdatedStarsBalance(_ updatedStarsBalance: [PeerId: StarsAmount]) {
             for subscriber in self.updatedStarsBalanceContext.subscribers.copyItems() {
                 subscriber(updatedStarsBalance)
             }
         }
-                
+
         public func updatedTonBalance() -> Signal<[PeerId: StarsAmount], NoError> {
             let queue = self.queue
             return Signal { [weak self] subscriber in
@@ -1768,7 +1785,7 @@ public final class AccountStateManager {
                         let index = strongSelf.updatedTonBalanceContext.subscribers.add({ starsBalance in
                             subscriber.putNext(starsBalance)
                         })
-                        
+
                         disposable.set(ActionDisposable {
                             if let strongSelf = self {
                                 strongSelf.updatedTonBalanceContext.subscribers.remove(index)
@@ -1779,13 +1796,13 @@ public final class AccountStateManager {
                 return disposable
             }
         }
-        
+
         private func notifyUpdatedTonBalance(_ updatedTonBalance: [PeerId: StarsAmount]) {
             for subscriber in self.updatedTonBalanceContext.subscribers.copyItems() {
                 subscriber(updatedTonBalance)
             }
         }
-        
+
         public func updatedStarsRevenueStatus() -> Signal<[PeerId: StarsRevenueStats.Balances], NoError> {
             let queue = self.queue
             return Signal { [weak self] subscriber in
@@ -1795,7 +1812,7 @@ public final class AccountStateManager {
                         let index = strongSelf.updatedStarsRevenueStatusContext.subscribers.add({ revenueBalances in
                             subscriber.putNext(revenueBalances)
                         })
-                        
+
                         disposable.set(ActionDisposable {
                             if let strongSelf = self {
                                 strongSelf.updatedStarsRevenueStatusContext.subscribers.remove(index)
@@ -1806,13 +1823,13 @@ public final class AccountStateManager {
                 return disposable
             }
         }
-        
+
         private func notifyUpdatedStarsRevenueStatus(_ updatedStarsRevenueStatus: [PeerId: StarsRevenueStats.Balances]) {
             for subscriber in self.updatedStarsRevenueStatusContext.subscribers.copyItems() {
                 subscriber(updatedStarsRevenueStatus)
             }
         }
-        
+
         public func updatedStarGiftAuctionState() -> Signal<[Int64: GiftAuctionContext.State.AuctionState], NoError> {
             let queue = self.queue
             return Signal { [weak self] subscriber in
@@ -1822,7 +1839,7 @@ public final class AccountStateManager {
                         let index = strongSelf.updatedStarGiftAuctionStateContext.subscribers.add({ starsBalance in
                             subscriber.putNext(starsBalance)
                         })
-                        
+
                         disposable.set(ActionDisposable {
                             if let strongSelf = self {
                                 strongSelf.updatedStarGiftAuctionStateContext.subscribers.remove(index)
@@ -1833,13 +1850,13 @@ public final class AccountStateManager {
                 return disposable
             }
         }
-                
+
         private func notifyUpdatedStarGiftAuctionState(_ updatedStarGiftAuctionState: [Int64: GiftAuctionContext.State.AuctionState]) {
             for subscriber in self.updatedStarGiftAuctionStateContext.subscribers.copyItems() {
                 subscriber(updatedStarGiftAuctionState)
             }
         }
-        
+
         public func updatedStarGiftAuctionMyState() -> Signal<[Int64: GiftAuctionContext.State.MyState], NoError> {
             let queue = self.queue
             return Signal { [weak self] subscriber in
@@ -1849,7 +1866,7 @@ public final class AccountStateManager {
                         let index = strongSelf.updatedStarGiftAuctionMyStateContext.subscribers.add({ starsBalance in
                             subscriber.putNext(starsBalance)
                         })
-                        
+
                         disposable.set(ActionDisposable {
                             if let strongSelf = self {
                                 strongSelf.updatedStarGiftAuctionMyStateContext.subscribers.remove(index)
@@ -1860,17 +1877,17 @@ public final class AccountStateManager {
                 return disposable
             }
         }
-                
+
         private func notifyUpdatedStarGiftAuctionMyState(_ updatedStarGiftAuctionMyState: [Int64: GiftAuctionContext.State.MyState]) {
             for subscriber in self.updatedStarGiftAuctionMyStateContext.subscribers.copyItems() {
                 subscriber(updatedStarGiftAuctionMyState)
             }
         }
-                
+
         func notifyDeletedMessages(messageIds: [MessageId]) {
             self.deletedMessagesPipe.putNext(messageIds.map { .messageId($0) })
         }
-        
+
         public func processIncomingCallUpdate(data: Data, completion: @escaping ((CallSessionRingingState, CallSession)?) -> Void) {
             var rawData = data
             let reader = BufferReader(Buffer(data: data))
@@ -1881,7 +1898,7 @@ public final class AccountStateManager {
                     }
                 }
             }
-            
+
             if let updates = Api.parse(Buffer(data: rawData)) as? Api.Updates {
                 switch updates {
                 case let .updates(updatesData):
@@ -1908,197 +1925,197 @@ public final class AccountStateManager {
             }
             completion(nil)
         }
-        
+
         func removePossiblyDeliveredMessages(uniqueIds: [Int64: PeerId]) {
             self.queue.async {
                 self.removePossiblyDeliveredMessagesUniqueIds.merge(uniqueIds, uniquingKeysWith: { _, rhs in rhs })
             }
         }
-        
+
         func addStarRefBotConnectionEvent(event: StarRefBotConnectionEvent) {
             self.starRefBotConnectionEventsPipe.putNext(event)
         }
     }
-    
+
     private let impl: QueueLocalObject<Impl>
-    
+
     public let accountPeerId: PeerId
     public let postbox: Postbox
     public let network: Network
     let auxiliaryMethods: AccountAuxiliaryMethods
     //var transformOutgoingMessageMedia: TransformOutgoingMessageMedia?
-    
+
     public var isUpdating: Signal<Bool, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.isUpdating.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var notificationMessages: Signal<[([Message], PeerGroupId, Bool, MessageHistoryThreadData?)], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.notificationMessages.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var reactionNotifications: Signal<[(reactionAuthor: Peer, reaction: MessageReaction.Reaction, message: Message, timestamp: Int32)], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.reactionNotifications.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
-    public var displayAlerts: Signal<[(text: String, isDropAuth: Bool)], NoError> {
+
+    public var displayAlerts: Signal<[AccountDisplayAlert], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.displayAlerts.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var dismissBotWebViews: Signal<[Int64], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.dismissBotWebViews.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     var externallyUpdatedPeerIds: Signal<[PeerId], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.externallyUpdatedPeerIds.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var termsOfServiceUpdate: Signal<TermsOfServiceUpdate?, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.termsOfServiceUpdate.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var appUpdateInfo: Signal<AppUpdateInfo?, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.appUpdateInfo.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var contactBirthdays: Signal<[EnginePeer.Id: TelegramBirthday], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.contactBirthdays.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var appliedIncomingReadMessages: Signal<[MessageId], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.appliedIncomingReadMessages.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     var significantStateUpdateCompleted: Signal<Void, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.significantStateUpdateCompleted.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     var authorizationListUpdates: Signal<Void, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.authorizationListUpdates.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     var threadReadStateUpdates: Signal<(incoming: [PeerAndBoundThreadId: MessageId.Id], outgoing: [PeerAndBoundThreadId: MessageId.Id]), NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.threadReadStateUpdates.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var groupCallParticipantUpdates: Signal<[(Int64, GroupCallParticipantsContext.Update)], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.groupCallParticipantUpdates.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     var groupCallMessageUpdates: Signal<[GroupCallMessageUpdate], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.groupCallMessageUpdates.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var deletedMessages: Signal<[DeletedMessageId], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.deletedMessages.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     var storyUpdates: Signal<[InternalStoryUpdate], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.storyUpdates.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     func injectStoryUpdates(updates: [InternalStoryUpdate]) {
         self.impl.with { impl in
             impl.storyUpdatesPipe.putNext(updates)
         }
     }
-    
+
     var botPreviewUpdates: Signal<[InternalBotPreviewUpdate], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.botPreviewUpdates.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     func injectBotPreviewUpdates(updates: [InternalBotPreviewUpdate]) {
         self.impl.with { impl in
             impl.botPreviewUpdatesPipe.putNext(updates)
         }
     }
-    
+
     var forceSendPendingStarsReaction: Signal<MessageId, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.forceSendPendingStarsReaction.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     var forceSendPendingPaidMessage: Signal<PeerId, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.forceSendPendingPaidMessage.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     var commitSendPendingPaidMessage: Signal<MessageId, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.commitSendPendingPaidMessage.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public var sentScheduledMessageIds: Signal<Set<MessageId>, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.sentScheduledMessageIds.start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     func forceSendPendingStarsReaction(messageId: MessageId) {
         self.impl.with { impl in
             impl.forceSendPendingStarsReactionPipe.putNext(messageId)
         }
     }
-    
-    
+
+
     func forceSendPendingPaidMessage(peerId: PeerId) {
         self.impl.with { impl in
             impl.forceSendPendingPaidMessagePipe.putNext(peerId)
         }
     }
-    
+
     func commitSendPendingPaidMessage(messageId: MessageId) {
         self.impl.with { impl in
             impl.commitSendPendingPaidMessagePipe.putNext(messageId)
         }
     }
-    
+
     var updateConfigRequested: (() -> Void)?
     var isPremiumUpdated: (() -> Void)?
-    
+
     let messagesRemovedContext = MessagesRemovedContext()
-    
+
     public weak var starsContext: StarsContext?
     public weak var tonContext: StarsContext?
-    
+
     init(
         accountPeerId: PeerId,
         accountManager: AccountManager<TelegramAccountManagerTypes>,
@@ -2111,17 +2128,17 @@ public final class AccountStateManager {
         auxiliaryMethods: AccountAuxiliaryMethods
     ) {
         let queue = Queue(name: "AccountStateManager")
-        
+
         self.accountPeerId = accountPeerId
         self.postbox = postbox
         self.network = network
         self.auxiliaryMethods = auxiliaryMethods
-        
+
         let messagesRemovedContext = self.messagesRemovedContext
-        
+
         var updateConfigRequestedImpl: (() -> Void)?
         var isPremiumUpdatedImpl: (() -> Void)?
-        
+
         self.impl = QueueLocalObject(queue: queue, generate: {
             return Impl(
                 queue: queue,
@@ -2143,7 +2160,7 @@ public final class AccountStateManager {
                 messagesRemovedContext: messagesRemovedContext
             )
         })
-        
+
         updateConfigRequestedImpl = { [weak self] in
             self?.updateConfigRequested?()
         }
@@ -2151,140 +2168,140 @@ public final class AccountStateManager {
             self?.isPremiumUpdated?()
         }
     }
-    
+
     func reset() {
         self.impl.with { impl in
             impl.reset()
         }
     }
-    
+
     func addUpdates(_ updates: Api.Updates) {
         self.impl.with { impl in
             impl.addUpdates(updates)
         }
     }
-    
+
     func addUpdateGroups(_ groups: [UpdateGroup]) {
         self.impl.with { impl in
             impl.addUpdateGroups(groups)
         }
     }
-    
+
     func addReplayAsynchronouslyBuiltFinalState(_ finalState: AccountFinalState) -> Signal<Bool, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.addReplayAsynchronouslyBuiltFinalState(finalState).start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     func standaloneReplayAsynchronouslyBuiltFinalState(finalState: AccountFinalState) -> Signal<Never, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.standaloneReplayAsynchronouslyBuiltFinalState(finalState: finalState).start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     func notifyAppliedIncomingReadMessages(_ ids: [MessageId]) {
         self.impl.with { impl in
             impl.notifyAppliedIncomingReadMessages(ids)
         }
     }
-    
+
     func modifyAppUpdateInfo(_ f: @escaping (AppUpdateInfo?) -> (AppUpdateInfo?)) {
         self.impl.with { impl in
             impl.modifyAppUpdateInfo(f)
         }
     }
-    
+
     func modifyContactBirthdays(_ f: @escaping ([EnginePeer.Id: TelegramBirthday]) -> ([EnginePeer.Id: TelegramBirthday])) {
         self.impl.with { impl in
             impl.modifyContactBirthdays(f)
         }
     }
-    
+
     public func pollStateUpdateCompletion() -> Signal<[MessageId], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.pollStateUpdateCompletion().start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     func notifyDeletedMessages(messageIds: [MessageId]) {
         self.impl.with { impl in
             impl.notifyDeletedMessages(messageIds: messageIds)
         }
     }
-    
+
     func removePossiblyDeliveredMessages(uniqueIds: [Int64: PeerId]) {
         self.impl.with { impl in
             impl.removePossiblyDeliveredMessages(uniqueIds: uniqueIds)
         }
     }
-    
+
     public func updatedPeersNearby() -> Signal<[PeerNearby], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.updatedPeersNearby().start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public func updatedStarsBalance() -> Signal<[PeerId: StarsAmount], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.updatedStarsBalance().start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public func updatedTonBalance() -> Signal<[PeerId: StarsAmount], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.updatedTonBalance().start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public func updatedStarsRevenueStatus() -> Signal<[PeerId: StarsRevenueStats.Balances], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.updatedStarsRevenueStatus().start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
-    
+
+
     public func updatedStarGiftAuctionState() -> Signal<[Int64: GiftAuctionContext.State.AuctionState], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.updatedStarGiftAuctionState().start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public func updatedStarGiftAuctionMyState() -> Signal<[Int64: GiftAuctionContext.State.MyState], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.updatedStarGiftAuctionMyState().start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     func addCustomOperation<T, E>(_ f: Signal<T, E>) -> Signal<T, E> {
         return self.impl.signalWith { impl, subscriber in
             return impl.addCustomOperation(f).start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     func modifyTermsOfServiceUpdate(_ f: @escaping (TermsOfServiceUpdate?) -> (TermsOfServiceUpdate?)) {
         self.impl.with { impl in
             impl.modifyTermsOfServiceUpdate(f)
         }
     }
-    
+
     public func updatedWebpage(_ webpageId: MediaId) -> Signal<TelegramMediaWebpage, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.updatedWebpage(webpageId).start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public func processIncomingCallUpdate(data: Data, completion: @escaping ((CallSessionRingingState, CallSession)?) -> Void) {
         self.impl.with { impl in
             impl.processIncomingCallUpdate(data: data, completion: completion)
         }
     }
-    
+
     public func standalonePollDifference() -> Signal<Bool, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.standalonePollDifference().start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)
         }
     }
-    
+
     public static func extractIncomingCallUpdate(data: Data) -> IncomingCallUpdate? {
         var rawData = data
         let reader = BufferReader(Buffer(data: data))
@@ -2295,7 +2312,7 @@ public final class AccountStateManager {
                 }
             }
         }
-        
+
         guard let updates = Api.parse(Buffer(data: rawData)) as? Api.Updates else {
             return nil
         }
@@ -2332,27 +2349,27 @@ public final class AccountStateManager {
                     break
                 }
             }
-            
+
             return nil
         default:
             return nil
         }
     }
-    
+
     public func synchronouslyIsMessageDeletedInteractively(ids: [EngineMessage.Id]) -> [EngineMessage.Id] {
         return self.messagesRemovedContext.synchronouslyIsMessageDeletedInteractively(ids: ids)
     }
-    
+
     public func synchronouslyIsMessageDeletedRemotely(ids: [EngineMessage.Id]) -> [EngineMessage.Id] {
         return self.messagesRemovedContext.synchronouslyIsMessageDeletedRemotely(ids: ids)
     }
-    
+
     func starRefBotConnectionEvents() -> Signal<StarRefBotConnectionEvent, NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.starRefBotConnectionEventsPipe.signal().start(next: subscriber.putNext)
         }
     }
-    
+
     func addStarRefBotConnectionEvent(event: StarRefBotConnectionEvent) {
         self.impl.with { impl in
             impl.addStarRefBotConnectionEvent(event: event)
@@ -2362,16 +2379,16 @@ public final class AccountStateManager {
 
 func resolveNotificationSettings(list: [TelegramPeerNotificationSettings], defaultSettings: MessageNotificationSettings) -> (sound: PeerMessageSound, notify: Bool, displayContents: Bool) {
     var sound: PeerMessageSound = defaultSettings.sound
-    
+
     var notify = defaultSettings.enabled
     var displayContents = defaultSettings.displayPreviews
-    
+
     for item in list.reversed() {
         if case .default = item.messageSound {
         } else {
             sound = item.messageSound
         }
-        
+
         switch item.displayPreviews {
         case .default:
             break
@@ -2380,7 +2397,7 @@ func resolveNotificationSettings(list: [TelegramPeerNotificationSettings], defau
         case .hide:
             displayContents = false
         }
-        
+
         switch item.muteState {
         case .default:
             break
@@ -2395,11 +2412,11 @@ func resolveNotificationSettings(list: [TelegramPeerNotificationSettings], defau
             }
         }
     }
-    
+
     if case .default = sound {
         sound = defaultCloudPeerNotificationSound
     }
-    
+
     return (sound, notify, displayContents)
 }
 
@@ -2413,7 +2430,7 @@ public func messagesForNotification(transaction: Transaction, id: MessageId, alw
     var muted = false
     var displayContents = true
     var threadData: MessageHistoryThreadData?
-    
+
     for attribute in message.attributes {
         if let attribute = attribute as? NotificationInfoMessageAttribute {
             if attribute.flags.contains(.muted) {
@@ -2429,7 +2446,7 @@ public func messagesForNotification(transaction: Transaction, id: MessageId, alw
     if threadData == nil, let threadId = message.threadId {
         threadData = transaction.getMessageHistoryThreadInfo(peerId: message.id.peerId, threadId: threadId)?.data.get(MessageHistoryThreadData.self)
     }
-    
+
     for media in message.media {
         if let action = media as? TelegramMediaAction {
             switch action.action {
@@ -2440,7 +2457,7 @@ public func messagesForNotification(transaction: Transaction, id: MessageId, alw
             }
         }
     }
-    
+
     var notificationPeerId = id.peerId
     let peer = transaction.getPeer(id.peerId)
     if let peer, peer is TelegramSecretChat, let associatedPeerId = peer.associatedPeerId {
@@ -2449,20 +2466,20 @@ public func messagesForNotification(transaction: Transaction, id: MessageId, alw
     if message.personal, let author = message.author {
         notificationPeerId = author.id
     }
-    
+
     var notificationSettingsStack: [TelegramPeerNotificationSettings] = []
-    
+
     if let peer = peer as? TelegramChannel, peer.isMonoForum {
     } else if let threadId = message.threadId, let threadData = transaction.getMessageHistoryThreadInfo(peerId: message.id.peerId, threadId: threadId)?.data.get(MessageHistoryThreadData.self) {
         notificationSettingsStack.append(threadData.notificationSettings)
     }
-    
+
     if let notificationSettings = transaction.getPeerNotificationSettings(id: notificationPeerId) as? TelegramPeerNotificationSettings {
         notificationSettingsStack.append(notificationSettings)
     }
-    
+
     let globalNotificationSettings = transaction.getPreferencesEntry(key: PreferencesKeys.globalNotifications)?.get(GlobalNotificationSettings.self) ?? GlobalNotificationSettings.defaultSettings
-    
+
     let defaultNotificationSettings: MessageNotificationSettings
     if id.peerId.namespace == Namespaces.Peer.CloudUser {
         defaultNotificationSettings = globalNotificationSettings.effective.privateChats
@@ -2474,9 +2491,9 @@ public func messagesForNotification(transaction: Transaction, id: MessageId, alw
     } else {
         defaultNotificationSettings = globalNotificationSettings.effective.groupChats
     }
-    
+
     let (resolvedSound, resolvedNotify, resolvedDisplayContents) = resolveNotificationSettings(list: notificationSettingsStack, defaultSettings: defaultNotificationSettings)
-    
+
     var sound = resolvedSound
     if !resolvedNotify {
         notify = false
@@ -2484,11 +2501,11 @@ public func messagesForNotification(transaction: Transaction, id: MessageId, alw
     if !resolvedDisplayContents {
         displayContents = false
     }
-    
+
     if muted {
         sound = .none
     }
-    
+
     if let channel = message.peers[message.id.peerId] as? TelegramChannel {
         if !channel.flags.contains(.isForum) {
             threadData = nil
@@ -2500,7 +2517,7 @@ public func messagesForNotification(transaction: Transaction, id: MessageId, alw
             break
         }
     }
-    
+
     var foundReadState = false
     var isUnread = true
     if let readState = transaction.getCombinedPeerReadState(id.peerId) {
@@ -2509,13 +2526,13 @@ public func messagesForNotification(transaction: Transaction, id: MessageId, alw
         }
         foundReadState = true
     }
-    
+
     if !foundReadState {
         Logger.shared.log("AccountStateManager", "read state for \(id.peerId) is undefined")
     }
-    
+
     var resultMessages: [Message] = [message]
-    
+
     var messageGroup: [Message]?
     if message.forwardInfo != nil && message.sourceReference == nil {
         messageGroup = transaction.getMessageForwardedGroup(message.id)
@@ -2525,7 +2542,7 @@ public func messagesForNotification(transaction: Transaction, id: MessageId, alw
     if let messageGroup = messageGroup {
         resultMessages.append(contentsOf: messageGroup.filter({ $0.id != message.id }))
     }
-    
+
     if notify {
         return (resultMessages, isUnread, sound, displayContents, threadData)
     } else {

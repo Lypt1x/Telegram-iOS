@@ -166,13 +166,15 @@ public extension TelegramEngine {
         }
 
         public func deleteMessagesInteractively(messageIds: [MessageId], type: InteractiveMessagesDeletionType, deleteAllInGroup: Bool = false) -> Signal<Void, NoError> {
-            self.account.stateManager.messagesRemovedContext.addIsMessagesDeletedInteractively(ids: messageIds.map { id -> DeletedMessageId in
-                if id.namespace == Namespaces.Message.Cloud && (id.peerId.namespace == Namespaces.Peer.CloudUser || id.peerId.namespace == Namespaces.Peer.CloudGroup) {
-                    return .global(id.id)
-                } else {
-                    return .messageId(id)
-                }
-            })
+            if !SGSimpleSettings.shared.deletedMessagesHistoryEnabled {
+                self.account.stateManager.messagesRemovedContext.addIsMessagesDeletedInteractively(ids: messageIds.map { id -> DeletedMessageId in
+                    if id.namespace == Namespaces.Message.Cloud && (id.peerId.namespace == Namespaces.Peer.CloudUser || id.peerId.namespace == Namespaces.Peer.CloudGroup) {
+                        return .global(id.id)
+                    } else {
+                        return .messageId(id)
+                    }
+                })
+            }
             
             return _internal_deleteMessagesInteractively(account: self.account, messageIds: messageIds, type: type, deleteAllInGroup: deleteAllInGroup)
         }

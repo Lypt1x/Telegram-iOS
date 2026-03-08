@@ -2056,7 +2056,7 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
                 isSending = true
                 title = chatPresentationInterfaceState.strings.Conversation_ContextMenuCancelSending
             } else if isDeletedMessage {
-                title = "Delete from history"
+                title = "Remove from history"
             } else {
                 if case .peer(context.account.peerId) = chatPresentationInterfaceState.chatLocation, message.effectivelyIncoming(context.account.peerId) {
                     title = chatPresentationInterfaceState.strings.Chat_MessageContextMenu_Remove

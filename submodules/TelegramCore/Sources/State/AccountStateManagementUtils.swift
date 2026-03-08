@@ -4419,7 +4419,7 @@ func replayFinalState(
                     addMessageThreadStatsDifference(threadKey: id, remove: remove, addedMessagePeer: nil, addedMessageId: nil, isOutgoing: false)
                 })
                 for text in result.displayAlerts {
-                    finalState.state.addDisplayAlert(text, isDropAuth: false)
+                    finalState.state.addDisplayAlert(text, isDropAuth: false, type: .inAppNotification)
                 }
                 if !result.isPreserved {
                     deletedMessageIds.append(contentsOf: ids.map { .global($0) })
@@ -4429,7 +4429,7 @@ func replayFinalState(
                     addMessageThreadStatsDifference(threadKey: id, remove: remove, addedMessagePeer: nil, addedMessageId: nil, isOutgoing: false)
                 })
                 for text in result.displayAlerts {
-                    finalState.state.addDisplayAlert(text, isDropAuth: false)
+                    finalState.state.addDisplayAlert(text, isDropAuth: false, type: .inAppNotification)
                 }
                 if !result.isPreserved {
                     deletedMessageIds.append(contentsOf: ids.map { .messageId($0) })
@@ -5885,7 +5885,7 @@ func replayFinalState(
             if processSecretChatIncomingEncryptedOperations(transaction: transaction, peerId: peerId) {
                 let processResult = processSecretChatIncomingDecryptedOperations(encryptionProvider: encryptionProvider, mediaBox: mediaBox, transaction: transaction, peerId: peerId)
                 for text in processResult.displayAlerts {
-                    finalState.state.addDisplayAlert(text, isDropAuth: false)
+                    finalState.state.addDisplayAlert(text, isDropAuth: false, type: .inAppNotification)
                 }
                 if !processResult.addedMessages.isEmpty {
                     let currentInclusion = transaction.getPeerChatListInclusion(peerId)
