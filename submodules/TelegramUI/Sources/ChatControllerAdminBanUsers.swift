@@ -609,7 +609,7 @@ extension ChatControllerImpl {
                 }))
             }
             if options.contains(.deleteLocally) {
-                var localOptionText = "Remove from history"
+                var localOptionText = removeDeletedMessagesFromHistory ? "Delete from history" : self.presentationData.strings.Conversation_DeleteMessagesForMe
                 if !removeDeletedMessagesFromHistory, self.chatLocation.peerId == self.context.account.peerId {
                     if case .scheduledMessages = self.presentationInterfaceState.subject {
                         localOptionText = messageIds.count > 1 ? self.presentationData.strings.ScheduledMessages_Reminder_DeleteMany : self.presentationData.strings.ScheduledMessages_Reminder_Delete
